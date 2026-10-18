@@ -1,0 +1,307 @@
+require('dotenv').config();
+
+const crypto = require('node:crypto');
+const express = require('express');
+const db = require('./database');
+
+const app = express();
+const port = Number(process.env.PORT) || 8080;
+const adminPassword = process.env.ADMIN_PASSWORD;
+const sessionSecret = process.env.SESSION_SECRET;
+const sessions = new Map();
+
+if (!adminPassword || !sessionSecret) {
+  throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
+}
+
+app.use(express.json({ limit: '32kb' }));
+app.use((req, res, next) => {
+  const blockedPath = /^\/(?:data|node_modules)(?:\/|$)/.test(req.path)
+    || /^\/(?:server|database|package(?:-lock)?)\.(?:js|json)$/.test(req.path);
+
+  if (blockedPath) return res.sendStatus(404);
+  next();
+});
+app.use(express.static(__dirname));
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+app.get('/api/categories', (req, res) => {
+  const categories = db.prepare(`
+    SELECT id, name, slug, description, color
+    FROM categories
+    WHERE active = 1
+    ORDER BY id
+  `).all();
+
+  res.json(categories);
+});
+
+function safeCompare(left, right) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function createSession() {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, Date.now() + 8 * 60 * 60 * 1000);
+  return token;
+}
+
+function requireAdmin(req, res, next) {
+  const token = req.headers.cookie?.match(/(?:^|;\s*)ayesha_admin=([^;]+)/)?.[1];
+  const expiresAt = token && sessions.get(token);
+  if (!expiresAt || expiresAt < Date.now()) {
+    if (token) sessions.delete(token);
+    return res.status(401).json({ error: 'Admin authentication required.' });
+  }
+  next();
+}
+
+function cleanText(value, fieldName, { required = true, maxLength = 5000 } = {}) {
+  if (typeof value !== 'string') {
+    if (!required && (value === undefined || value === null)) return null;
+    throw new Error(`${fieldName} must be text.`);
+  }
+  const text = value.trim();
+  if (required && !text) throw new Error(`${fieldName} is required.`);
+  if (text.length > maxLength) throw new Error(`${fieldName} is too long.`);
+  return text || null;
+}
+
+function parseBoolean(value, fallback = false) {
+  return value === undefined ? fallback : Boolean(value);
+}
+
+app.post('/api/admin/login', (req, res) => {
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!safeCompare(password, adminPassword)) return res.status(401).json({ error: 'Invalid password.' });
+
+  const token = createSession();
+  res.setHeader('Set-Cookie', `ayesha_admin=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/logout', requireAdmin, (req, res) => {
+  const token = req.headers.cookie?.match(/(?:^|;\s*)ayesha_admin=([^;]+)/)?.[1];
+  sessions.delete(token);
+  res.setHeader('Set-Cookie', 'ayesha_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/session', requireAdmin, (req, res) => {
+  res.json({ authenticated: true });
+});
+
+app.get('/api/admin/dashboard', requireAdmin, (req, res) => {
+  res.json({
+    quotes: db.prepare('SELECT COUNT(*) AS total, SUM(active) AS active FROM quotes').get(),
+    categories: db.prepare('SELECT COUNT(*) AS total, SUM(active) AS active FROM categories').get(),
+    events: db.prepare('SELECT COUNT(*) AS total FROM events').get(),
+    mainQuote: db.prepare('SELECT id FROM quotes WHERE is_main_quote = 1 AND active = 1 LIMIT 1').get() || null
+  });
+});
+
+app.get('/api/admin/settings', requireAdmin, (req, res) => {
+  const settings = db.prepare('SELECT key, value FROM settings WHERE key IN (?, ?, ?)').all(
+    'main_quote_enabled', 'main_quote_delay', 'main_quote_frequency'
+  ).reduce((result, setting) => ({ ...result, [setting.key]: setting.value }), {});
+  res.json({
+    enabled: settings.main_quote_enabled === '1',
+    delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
+    frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session'
+  });
+});
+
+app.put('/api/admin/settings', requireAdmin, (req, res) => {
+  const delay = Number(req.body?.delay);
+  const frequency = req.body?.frequency;
+  if (!Number.isInteger(delay) || delay < 0 || delay > 60000) {
+    return res.status(400).json({ error: 'Popup delay must be a whole number from 0 to 60000 milliseconds.' });
+  }
+  if (!['session', 'day', 'always'].includes(frequency)) {
+    return res.status(400).json({ error: 'Popup frequency is invalid.' });
+  }
+  const save = db.prepare(`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  `);
+  const update = db.transaction(() => {
+    save.run('main_quote_enabled', req.body?.enabled ? '1' : '0');
+    save.run('main_quote_delay', String(delay));
+    save.run('main_quote_frequency', frequency);
+  });
+  update();
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/categories', requireAdmin, (req, res) => {
+  res.json(db.prepare(`
+    SELECT c.id, c.name, c.slug, c.description, c.color, c.active,
+      COUNT(q.id) AS quote_count
+    FROM categories c
+    LEFT JOIN quotes q ON q.category_id = c.id
+    GROUP BY c.id
+    ORDER BY c.id
+  `).all());
+});
+
+app.post('/api/admin/categories', requireAdmin, (req, res) => {
+  try {
+    const name = cleanText(req.body?.name, 'Name', { maxLength: 80 });
+    const slug = cleanText(req.body?.slug, 'Slug', { maxLength: 80 })
+      .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+    if (!slug) throw new Error('Slug must contain letters or numbers.');
+    const result = db.prepare(`
+      INSERT INTO categories (name, slug, description, color)
+      VALUES (?, ?, ?, ?)
+    `).run(name, slug, cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 }), cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 }));
+    res.status(201).json({ id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(400).json({ error: error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'That category name or slug already exists.' : error.message });
+  }
+});
+
+app.put('/api/admin/categories/:id', requireAdmin, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) throw new Error('Invalid category ID.');
+    const name = cleanText(req.body?.name, 'Name', { maxLength: 80 });
+    const slug = cleanText(req.body?.slug, 'Slug', { maxLength: 80 })
+      .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+    if (!slug) throw new Error('Slug must contain letters or numbers.');
+    const description = cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 });
+    const color = cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 });
+    const result = db.prepare(`
+      UPDATE categories
+      SET name = ?, slug = ?, description = ?, color = ?, active = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(name, slug, description, color, parseBoolean(req.body?.active, true) ? 1 : 0, id);
+    if (!result.changes) return res.status(404).json({ error: 'Category not found.' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'That category name already exists.' : error.message });
+  }
+});
+
+app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const quoteCount = db.prepare('SELECT COUNT(*) AS count FROM quotes WHERE category_id = ?').get(id).count;
+  if (quoteCount) return res.status(409).json({ error: 'Move or delete this category’s quotes before deleting the category.' });
+  const result = db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+  if (!result.changes) return res.status(404).json({ error: 'Category not found.' });
+  res.status(204).end();
+});
+
+app.get('/api/admin/quotes', requireAdmin, (req, res) => {
+  res.json(db.prepare(`
+    SELECT q.id, q.text, q.author, q.active, q.is_main_quote, q.display_order,
+      q.category_id, c.name AS category_name, c.slug AS category_slug
+    FROM quotes q
+    JOIN categories c ON c.id = q.category_id
+    ORDER BY q.display_order, q.id
+  `).all());
+});
+
+app.post('/api/admin/quotes', requireAdmin, (req, res) => {
+  try {
+    const text = cleanText(req.body?.text, 'Quote', { maxLength: 2000 });
+    const categoryId = Number(req.body?.categoryId);
+    if (!Number.isInteger(categoryId)) throw new Error('A category is required.');
+    const category = db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId);
+    if (!category) throw new Error('Category not found.');
+    const addQuote = db.transaction(() => {
+      if (parseBoolean(req.body?.isMainQuote)) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
+      return db.prepare(`
+        INSERT INTO quotes (text, category_id, author, active, is_main_quote, display_order)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), parseBoolean(req.body?.active, true) ? 1 : 0, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0);
+    });
+    res.status(201).json({ id: addQuote().lastInsertRowid });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/quotes/:id', requireAdmin, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const text = cleanText(req.body?.text, 'Quote', { maxLength: 2000 });
+    const categoryId = Number(req.body?.categoryId);
+    if (!Number.isInteger(id) || !Number.isInteger(categoryId)) throw new Error('Invalid quote or category ID.');
+    if (!db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId)) throw new Error('Category not found.');
+    const updateQuote = db.transaction(() => {
+      if (parseBoolean(req.body?.isMainQuote)) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
+      return db.prepare(`
+        UPDATE quotes
+        SET text = ?, category_id = ?, author = ?, active = ?, is_main_quote = ?, display_order = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), parseBoolean(req.body?.active, true) ? 1 : 0, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0, id);
+    });
+    if (!updateQuote().changes) return res.status(404).json({ error: 'Quote not found.' });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/quotes/:id', requireAdmin, (req, res) => {
+  const result = db.prepare('DELETE FROM quotes WHERE id = ?').run(Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: 'Quote not found.' });
+  res.status(204).end();
+});
+
+app.get('/api/quotes/random', (req, res) => {
+  const category = typeof req.query.category === 'string' ? req.query.category : 'welcome';
+  const quote = db.prepare(`
+    SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
+    FROM quotes q
+    JOIN categories c ON c.id = q.category_id
+    WHERE q.active = 1 AND c.active = 1 AND c.slug = ?
+    ORDER BY RANDOM()
+    LIMIT 1
+  `).get(category);
+
+  if (!quote) return res.status(404).json({ error: 'No active quotes found for this category.' });
+  res.json({
+    id: quote.id,
+    text: quote.text,
+    author: quote.author,
+    category: { id: quote.category_id, name: quote.category_name, slug: quote.category_slug }
+  });
+});
+
+app.get('/api/quotes/main', (req, res) => {
+  const settings = db.prepare('SELECT key, value FROM settings WHERE key IN (?, ?, ?)').all(
+    'main_quote_enabled', 'main_quote_delay', 'main_quote_frequency'
+  ).reduce((result, setting) => ({ ...result, [setting.key]: setting.value }), {});
+  if (settings.main_quote_enabled !== '1') return res.status(404).json({ error: 'Main quote popup is disabled.' });
+  const quote = db.prepare(`
+    SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
+    FROM quotes q
+    JOIN categories c ON c.id = q.category_id
+    WHERE q.active = 1 AND q.is_main_quote = 1 AND c.active = 1
+    ORDER BY q.updated_at DESC, q.id DESC
+    LIMIT 1
+  `).get();
+
+  if (!quote) return res.status(404).json({ error: 'No main quote is configured.' });
+  res.json({
+    id: quote.id,
+    text: quote.text,
+    author: quote.author,
+    category: { id: quote.category_id, name: quote.category_name, slug: quote.category_slug },
+    popup: {
+      delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
+      frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session'
+    }
+  });
+});
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Ayesha gift server running at http://localhost:${port}`);
+});

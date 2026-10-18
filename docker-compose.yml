@@ -1,0 +1,12 @@
+services:
+  ayesha:
+    build: .
+    container_name: ayesha-gift
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      DATABASE_PATH: /app/data/ayesha.sqlite
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
