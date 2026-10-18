@@ -17,7 +17,10 @@
       <nav aria-label="Main navigation">
         <a class="brand" href="#home">A<span>✦</span>N</a>
         <p>for Ayesha Noor</p>
-        <a class="nav-link" href="#notes">little notes <span>↘</span></a>
+        <div class="nav-actions">
+          <button class="saved-link" id="view-saved" type="button">saved notes <span>♡</span></button>
+          <a class="nav-link" href="#notes">little notes <span>↘</span></a>
+        </div>
       </nav>
 
       <section class="hero" id="home">
@@ -76,6 +79,15 @@
         <p id="modal-message"></p>
         <button class="save-note" id="save-note" type="button" aria-pressed="false">♡ save this note</button>
         <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
+      </div>
+    </div>
+    <div class="saved-modal" id="saved-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="saved-title">
+      <div class="saved-modal-card">
+        <button class="close" id="close-saved" type="button" aria-label="Close saved notes">×</button>
+        <span class="modal-star">♡</span>
+        <p class="modal-label">your saved notes</p>
+        <h3 id="saved-title">The ones worth keeping.</h3>
+        <div class="saved-list" id="saved-list"></div>
       </div>
     </div>
     <section class="insights" id="insights" hidden aria-labelledby="insights-title">

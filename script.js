@@ -529,6 +529,10 @@ function getAnalytics() {
   }
 }
 
+function getSavedNotes() {
+  return getAnalytics().filter(event => event.type === 'saved');
+}
+
 function recordEvent(type, details = {}) {
   const events = getAnalytics();
   events.push({ type, ...details, timestamp: new Date().toISOString() });
@@ -574,12 +578,38 @@ document.querySelector('#save-note').addEventListener('click', event => {
   const saved = button.getAttribute('aria-pressed') === 'true';
   button.setAttribute('aria-pressed', String(!saved));
   button.textContent = saved ? '♡ save this note' : '♥ saved to your notes';
-  if (!saved) recordEvent('saved', { mood: activeMood, message: activeMessage });
+  if (!saved) {
+    recordEvent('saved', { mood: activeMood, message: activeMessage });
+    renderSavedNotes();
+  }
 });
 document.querySelector('#close-modal').addEventListener('click', closeModal);
 modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 function closeModal() { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
+
+const savedModal = document.querySelector('#saved-modal');
+const savedList = document.querySelector('#saved-list');
+
+function renderSavedNotes() {
+  const saved = getSavedNotes().slice().reverse();
+  savedList.innerHTML = saved.length
+    ? saved.map(event => `<article class="saved-item"><p>${event.message}</p><small>${new Date(event.timestamp).toLocaleString()}</small></article>`).join('')
+    : '<p class="empty-saved">You have not saved any notes yet. Open a note and tap “save this note” to keep it here.</p>';
+}
+
+function closeSavedNotes() {
+  savedModal.classList.remove('is-open');
+  savedModal.setAttribute('aria-hidden', 'true');
+}
+
+document.querySelector('#view-saved').addEventListener('click', () => {
+  renderSavedNotes();
+  savedModal.classList.add('is-open');
+  savedModal.setAttribute('aria-hidden', 'false');
+});
+document.querySelector('#close-saved').addEventListener('click', closeSavedNotes);
+savedModal.addEventListener('click', event => { if (event.target === savedModal) closeSavedNotes(); });
 
 function renderInsights() {
   const events = getAnalytics();
