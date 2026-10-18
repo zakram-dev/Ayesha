@@ -26,8 +26,8 @@
           <h1>A little gift<br />for <em>Ayesha.</em></h1>
           <p class="intro">For the person behind a name that feels like a soft thought. No big reason needed—just something sweet, made with warmth.</p>
           <div class="hero-actions">
-            <button class="primary-btn" id="open-note">Open a little note <span>→</span></button>
-            <button class="text-btn" id="random-note">surprise me <span>↗</span></button>
+            <button class="primary-btn" id="open-note" data-track="open-note">Open a little note <span>→</span></button>
+              <button class="text-btn" id="random-note" data-track="random-note">surprise me <span>↗</span></button>
           </div>
         </div>
         <div class="hero-art" aria-label="A dreamy pink flower illustration">
@@ -47,9 +47,9 @@
           <h2>Pick a feeling.<br /><em>Keep the sweetness.</em></h2>
         </div>
         <div class="note-grid">
-          <button class="mood-card peach" data-mood="sunny"><span class="card-icon">☼</span><strong>For a sunny moment</strong><small>a tiny reminder to glow</small><i>→</i></button>
-          <button class="mood-card pink" data-mood="soft"><span class="card-icon">♡</span><strong>For a soft moment</strong><small>something gentle for you</small><i>→</i></button>
-          <button class="mood-card lavender" data-mood="brave"><span class="card-icon">✦</span><strong>For a brave moment</strong><small>for when you need a nudge</small><i>→</i></button>
+          <button class="mood-card peach" data-mood="sunny" data-track="mood-sunny"><span class="card-icon">☼</span><strong>For a sunny moment</strong><small>a tiny reminder to glow</small><i>→</i></button>
+          <button class="mood-card pink" data-mood="soft" data-track="mood-soft"><span class="card-icon">♡</span><strong>For a soft moment</strong><small>something gentle for you</small><i>→</i></button>
+          <button class="mood-card lavender" data-mood="brave" data-track="mood-brave"><span class="card-icon">✦</span><strong>For a brave moment</strong><small>for when you need a nudge</small><i>→</i></button>
         </div>
       </section>
 
@@ -58,7 +58,7 @@
         <p class="eyebrow"><span></span> a mini reset</p>
         <h2>Need a tiny<br /><em>distraction?</em></h2>
         <p>Press the button for a small, lovely detour.</p>
-        <button class="primary-btn light-btn" id="distract-me">distract me, please <span>→</span></button>
+        <button class="primary-btn light-btn" id="distract-me" data-track="distraction">distract me, please <span>→</span></button>
       </section>
     </main>
 
@@ -74,9 +74,22 @@
         <p class="modal-label" id="modal-label">a small note for Ayesha</p>
         <h3 id="modal-title">Here is a little something.</h3>
         <p id="modal-message"></p>
+        <button class="save-note" id="save-note" type="button" aria-pressed="false">♡ save this note</button>
         <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
       </div>
     </div>
+    <section class="insights" id="insights" hidden aria-labelledby="insights-title">
+      <p class="eyebrow"><span></span> private owner view</p>
+      <h2 id="insights-title">What is resonating.</h2>
+      <p class="insights-intro">This information stays in this browser. It is not sent anywhere.</p>
+      <div class="insight-grid">
+        <div><strong id="total-interactions">0</strong><span>interactions</span></div>
+        <div><strong id="saved-count">0</strong><span>saved notes</span></div>
+        <div><strong id="top-mood">—</strong><span>favorite mood</span></div>
+      </div>
+      <ol class="saved-notes" id="saved-notes"></ol>
+      <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
+    </section>
     <script src="script.js"></script>
   </body>
 </html>
