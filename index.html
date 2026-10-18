@@ -17,10 +17,7 @@
       <nav aria-label="Main navigation">
         <a class="brand" href="#home">A<span>✦</span>N</a>
         <p>for Ayesha Noor</p>
-        <div class="nav-actions">
-          <button class="saved-link" id="view-saved" type="button">saved notes <span>♡</span></button>
-          <a class="nav-link" href="#notes">little notes <span>↘</span></a>
-        </div>
+        <a class="nav-link" href="#notes">little notes <span>↘</span></a>
       </nav>
 
       <section class="hero" id="home">
@@ -77,17 +74,7 @@
         <p class="modal-label" id="modal-label">a small note for Ayesha</p>
         <h3 id="modal-title">Here is a little something.</h3>
         <p id="modal-message"></p>
-        <button class="save-note" id="save-note" type="button" aria-pressed="false">♡ save this note</button>
         <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
-      </div>
-    </div>
-    <div class="saved-modal" id="saved-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="saved-title">
-      <div class="saved-modal-card">
-        <button class="close" id="close-saved" type="button" aria-label="Close saved notes">×</button>
-        <span class="modal-star">♡</span>
-        <p class="modal-label">your saved notes</p>
-        <h3 id="saved-title">The ones worth keeping.</h3>
-        <div class="saved-list" id="saved-list"></div>
       </div>
     </div>
     <section class="insights" id="insights" hidden aria-labelledby="insights-title">
@@ -96,10 +83,8 @@
       <p class="insights-intro">This information stays in this browser. It is not sent anywhere.</p>
       <div class="insight-grid">
         <div><strong id="total-interactions">0</strong><span>interactions</span></div>
-        <div><strong id="saved-count">0</strong><span>saved notes</span></div>
         <div><strong id="top-mood">—</strong><span>favorite mood</span></div>
       </div>
-      <ol class="saved-notes" id="saved-notes"></ol>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
     <script src="script.js"></script>

@@ -529,10 +529,6 @@ function getAnalytics() {
   }
 }
 
-function getSavedNotes() {
-  return getAnalytics().filter(event => event.type === 'saved');
-}
-
 function recordEvent(type, details = {}) {
   const events = getAnalytics();
   events.push({ type, ...details, timestamp: new Date().toISOString() });
@@ -558,8 +554,6 @@ function showMessage(mood = 'welcome') {
   title.textContent = distract ? 'A pause, just for you.' : 'Here is a little something.';
   activeMessage = pickMessage(mood);
   text.textContent = activeMessage;
-  document.querySelector('#save-note').setAttribute('aria-pressed', 'false');
-  document.querySelector('#save-note').textContent = '♡ save this note';
   recordEvent('message-viewed', { mood, message: activeMessage });
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
@@ -573,58 +567,20 @@ document.querySelectorAll('.mood-card').forEach(card => card.addEventListener('c
   showMessage(card.dataset.mood);
 }));
 document.querySelector('#another-note').addEventListener('click', () => showMessage(activeMood));
-document.querySelector('#save-note').addEventListener('click', event => {
-  const button = event.currentTarget;
-  const saved = button.getAttribute('aria-pressed') === 'true';
-  button.setAttribute('aria-pressed', String(!saved));
-  button.textContent = saved ? '♡ save this note' : '♥ saved to your notes';
-  if (!saved) {
-    recordEvent('saved', { mood: activeMood, message: activeMessage });
-    renderSavedNotes();
-  }
-});
 document.querySelector('#close-modal').addEventListener('click', closeModal);
 modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 function closeModal() { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
 
-const savedModal = document.querySelector('#saved-modal');
-const savedList = document.querySelector('#saved-list');
-
-function renderSavedNotes() {
-  const saved = getSavedNotes().slice().reverse();
-  savedList.innerHTML = saved.length
-    ? saved.map(event => `<article class="saved-item"><p>${event.message}</p><small>${new Date(event.timestamp).toLocaleString()}</small></article>`).join('')
-    : '<p class="empty-saved">You have not saved any notes yet. Open a note and tap “save this note” to keep it here.</p>';
-}
-
-function closeSavedNotes() {
-  savedModal.classList.remove('is-open');
-  savedModal.setAttribute('aria-hidden', 'true');
-}
-
-document.querySelector('#view-saved').addEventListener('click', () => {
-  renderSavedNotes();
-  savedModal.classList.add('is-open');
-  savedModal.setAttribute('aria-hidden', 'false');
-});
-document.querySelector('#close-saved').addEventListener('click', closeSavedNotes);
-savedModal.addEventListener('click', event => { if (event.target === savedModal) closeSavedNotes(); });
-
 function renderInsights() {
   const events = getAnalytics();
-  const saved = events.filter(event => event.type === 'saved');
   const moods = events.filter(event => event.type === 'click' && event.mood).reduce((counts, event) => {
     counts[event.mood] = (counts[event.mood] || 0) + 1;
     return counts;
   }, {});
   const favoriteMood = Object.entries(moods).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
   document.querySelector('#total-interactions').textContent = events.length;
-  document.querySelector('#saved-count').textContent = saved.length;
   document.querySelector('#top-mood').textContent = favoriteMood;
-  document.querySelector('#saved-notes').innerHTML = saved.length
-    ? saved.slice().reverse().map(event => `<li><span>${event.message}</span><small>${new Date(event.timestamp).toLocaleString()}</small></li>`).join('')
-    : '<li class="empty-insights">Saved notes will appear here.</li>';
 }
 
 if (new URLSearchParams(window.location.search).has('insights')) {
