@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A little gift for Ayesha Noor." />
+    <title>A little gift for Ayesha ✦</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-glow glow-one"></div>
+    <div class="page-glow glow-two"></div>
+    <main>
+      <nav aria-label="Main navigation">
+        <a class="brand" href="#home">A<span>✦</span>N</a>
+        <p>for Ayesha Noor</p>
+        <a class="nav-link" href="#notes">little notes <span>↘</span></a>
+      </nav>
+
+      <section class="hero" id="home">
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> a small corner of the internet</p>
+          <h1>A little gift<br />for <em>Ayesha.</em></h1>
+          <p class="intro">For the person behind a name that feels like a soft thought. No big reason needed—just something sweet, made with warmth.</p>
+          <div class="hero-actions">
+            <button class="primary-btn" id="open-note">Open a little note <span>→</span></button>
+            <button class="text-btn" id="random-note">surprise me <span>↗</span></button>
+          </div>
+        </div>
+        <div class="hero-art" aria-label="A dreamy pink flower illustration">
+          <div class="orb orb-a"></div>
+          <div class="orb orb-b"></div>
+          <div class="flower flower-back"><i></i><i></i><i></i><i></i><b></b></div>
+          <div class="flower flower-front"><i></i><i></i><i></i><i></i><i></i><b></b></div>
+          <div class="ribbon ribbon-one"></div>
+          <div class="ribbon ribbon-two"></div>
+          <p class="art-note">some things are<br /><em>lovely</em> just because</p>
+        </div>
+      </section>
+
+      <section class="notes" id="notes">
+        <div class="section-heading">
+          <p class="eyebrow"><span></span> little notes for any kind of day</p>
+          <h2>Pick a feeling.<br /><em>Keep the sweetness.</em></h2>
+        </div>
+        <div class="note-grid">
+          <button class="mood-card peach" data-mood="sunny"><span class="card-icon">☼</span><strong>For a sunny moment</strong><small>a tiny reminder to glow</small><i>→</i></button>
+          <button class="mood-card pink" data-mood="soft"><span class="card-icon">♡</span><strong>For a soft moment</strong><small>something gentle for you</small><i>→</i></button>
+          <button class="mood-card lavender" data-mood="brave"><span class="card-icon">✦</span><strong>For a brave moment</strong><small>for when you need a nudge</small><i>→</i></button>
+        </div>
+      </section>
+
+      <section class="distraction">
+        <div class="sparkle s1">✦</div><div class="sparkle s2">✧</div><div class="sparkle s3">✦</div>
+        <p class="eyebrow"><span></span> a mini reset</p>
+        <h2>Need a tiny<br /><em>distraction?</em></h2>
+        <p>Press the button for a small, lovely detour.</p>
+        <button class="primary-btn light-btn" id="distract-me">distract me, please <span>→</span></button>
+      </section>
+    </main>
+
+    <footer>
+      <p>made for Ayesha Noor, with a little softness — <strong>Zohaib ♥</strong></p>
+      <p>made with kind thoughts <span>✦</span></p>
+    </footer>
+
+    <div class="modal" id="message-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-card">
+        <button class="close" id="close-modal" aria-label="Close message">×</button>
+        <span class="modal-star">✦</span>
+        <p class="modal-label" id="modal-label">a small note for Ayesha</p>
+        <h3 id="modal-title">Here is a little something.</h3>
+        <p id="modal-message"></p>
+        <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
+      </div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
