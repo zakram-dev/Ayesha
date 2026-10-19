@@ -59,6 +59,12 @@ if (!categoryColumns.some(column => column.name === 'card_title')) {
   db.exec('ALTER TABLE categories ADD COLUMN card_title TEXT');
 }
 
+const quoteColumns = db.prepare('PRAGMA table_info(quotes)').all();
+if (!quoteColumns.some(column => column.name === 'status')) {
+  db.exec("ALTER TABLE quotes ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+  db.prepare("UPDATE quotes SET status = CASE WHEN active = 1 THEN 'active' ELSE 'archived' END").run();
+}
+
 const seedCategories = db.prepare(`
   INSERT INTO categories (name, slug, card_title, description, color)
   VALUES (@name, @slug, @cardTitle, @description, @color)

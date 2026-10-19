@@ -28,6 +28,30 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/events', (req, res) => {
+  const eventType = typeof req.body?.eventType === 'string' ? req.body.eventType.trim() : '';
+  const allowedEventTypes = new Set(['click', 'message-viewed', 'main-quote-seen']);
+  if (!allowedEventTypes.has(eventType)) return res.status(400).json({ error: 'Event type is invalid.' });
+
+  const quoteId = Number.isInteger(req.body?.quoteId) ? req.body.quoteId : null;
+  const categoryId = Number.isInteger(req.body?.categoryId) ? req.body.categoryId : null;
+  const sessionId = typeof req.body?.sessionId === 'string' && req.body.sessionId.length <= 100
+    ? req.body.sessionId
+    : null;
+  if (quoteId !== null && !db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) {
+    return res.status(400).json({ error: 'Quote not found.' });
+  }
+  if (categoryId !== null && !db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId)) {
+    return res.status(400).json({ error: 'Category not found.' });
+  }
+
+  db.prepare(`
+    INSERT INTO events (event_type, quote_id, category_id, session_id)
+    VALUES (?, ?, ?, ?)
+  `).run(eventType, quoteId, categoryId, sessionId);
+  res.status(204).end();
+});
+
 app.get('/api/categories', (req, res) => {
   const categories = db.prepare(`
     SELECT id, name, slug,
@@ -103,6 +127,24 @@ app.get('/api/admin/dashboard', requireAdmin, (req, res) => {
     quotes: db.prepare('SELECT COUNT(*) AS total, SUM(active) AS active FROM quotes').get(),
     categories: db.prepare('SELECT COUNT(*) AS total, SUM(active) AS active FROM categories').get(),
     events: db.prepare('SELECT COUNT(*) AS total FROM events').get(),
+    topCategories: db.prepare(`
+      SELECT c.name, COUNT(e.id) AS interactions
+      FROM events e
+      JOIN categories c ON c.id = e.category_id
+      GROUP BY c.id
+      ORDER BY interactions DESC, c.name
+      LIMIT 5
+    `).all(),
+    topQuotes: db.prepare(`
+      SELECT q.text, c.name AS category_name, COUNT(e.id) AS views
+      FROM events e
+      JOIN quotes q ON q.id = e.quote_id
+      JOIN categories c ON c.id = q.category_id
+      WHERE e.event_type IN ('message-viewed', 'main-quote-seen')
+      GROUP BY q.id
+      ORDER BY views DESC, q.id
+      LIMIT 5
+    `).all(),
     mainQuote: db.prepare('SELECT id FROM quotes WHERE is_main_quote = 1 AND active = 1 LIMIT 1').get() || null
   });
 });
@@ -207,7 +249,7 @@ app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
 
 app.get('/api/admin/quotes', requireAdmin, (req, res) => {
   res.json(db.prepare(`
-    SELECT q.id, q.text, q.author, q.active, q.is_main_quote, q.display_order,
+    SELECT q.id, q.text, q.author, q.active, q.status, q.is_main_quote, q.display_order,
       q.category_id, c.name AS category_name, c.slug AS category_slug
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
@@ -222,12 +264,13 @@ app.post('/api/admin/quotes', requireAdmin, (req, res) => {
     if (!Number.isInteger(categoryId)) throw new Error('A category is required.');
     const category = db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId);
     if (!category) throw new Error('Category not found.');
+    const status = ['active', 'draft', 'archived'].includes(req.body?.status) ? req.body.status : 'active';
     const addQuote = db.transaction(() => {
       if (parseBoolean(req.body?.isMainQuote)) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
       return db.prepare(`
-        INSERT INTO quotes (text, category_id, author, active, is_main_quote, display_order)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), parseBoolean(req.body?.active, true) ? 1 : 0, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0);
+        INSERT INTO quotes (text, category_id, author, active, status, is_main_quote, display_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), status === 'active' ? 1 : 0, status, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0);
     });
     res.status(201).json({ id: addQuote().lastInsertRowid });
   } catch (error) {
@@ -242,13 +285,14 @@ app.put('/api/admin/quotes/:id', requireAdmin, (req, res) => {
     const categoryId = Number(req.body?.categoryId);
     if (!Number.isInteger(id) || !Number.isInteger(categoryId)) throw new Error('Invalid quote or category ID.');
     if (!db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId)) throw new Error('Category not found.');
+    const status = ['active', 'draft', 'archived'].includes(req.body?.status) ? req.body.status : (parseBoolean(req.body?.active) ? 'active' : 'archived');
     const updateQuote = db.transaction(() => {
       if (parseBoolean(req.body?.isMainQuote)) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
       return db.prepare(`
         UPDATE quotes
-        SET text = ?, category_id = ?, author = ?, active = ?, is_main_quote = ?, display_order = ?, updated_at = CURRENT_TIMESTAMP
+        SET text = ?, category_id = ?, author = ?, active = ?, status = ?, is_main_quote = ?, display_order = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), parseBoolean(req.body?.active, true) ? 1 : 0, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0, id);
+      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), status === 'active' ? 1 : 0, status, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0, id);
     });
     if (!updateQuote().changes) return res.status(404).json({ error: 'Quote not found.' });
     res.json({ ok: true });
@@ -273,7 +317,7 @@ app.get('/api/quotes/random', (req, res) => {
     SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
-    WHERE q.active = 1 AND c.active = 1 AND c.slug = ? ${exclusionClause}
+    WHERE q.active = 1 AND q.status = 'active' AND c.active = 1 AND c.slug = ? ${exclusionClause}
     ORDER BY RANDOM()
     LIMIT 1
   `).get(category, ...excludedIds);
@@ -282,7 +326,7 @@ app.get('/api/quotes/random', (req, res) => {
     SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
-    WHERE q.active = 1 AND c.active = 1 AND c.slug = ?
+    WHERE q.active = 1 AND q.status = 'active' AND c.active = 1 AND c.slug = ?
     ORDER BY RANDOM()
     LIMIT 1
   `).get(category);
@@ -305,7 +349,7 @@ app.get('/api/quotes/main', (req, res) => {
     SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
-    WHERE q.active = 1 AND q.is_main_quote = 1 AND c.active = 1
+    WHERE q.active = 1 AND q.status = 'active' AND q.is_main_quote = 1 AND c.active = 1
     ORDER BY q.updated_at DESC, q.id DESC
     LIMIT 1
   `).get();

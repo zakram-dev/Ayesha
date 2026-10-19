@@ -8,6 +8,15 @@ let activeQuote = null;
 
 const analyticsKey = 'ayesha-gift-insights';
 const recentQuotesKey = 'ayesha-recent-quotes';
+const analyticsSessionKey = 'ayesha-analytics-session';
+function getAnalyticsSessionId() {
+  let sessionId = sessionStorage.getItem(analyticsSessionKey);
+  if (!sessionId) {
+    sessionId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(analyticsSessionKey, sessionId);
+  }
+  return sessionId;
+}
 function getAnalytics() {
   try {
     return JSON.parse(localStorage.getItem(analyticsKey) || '[]');
@@ -25,6 +34,17 @@ function recordEvent(type, details = {}) {
   } catch (error) {
     console.warn('Unable to save local insights.', error);
   }
+  fetch('/api/events', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      eventType: type,
+      quoteId: Number.isInteger(details.quoteId) ? details.quoteId : null,
+      categoryId: Number.isInteger(details.categoryId) ? details.categoryId : null,
+      sessionId: getAnalyticsSessionId()
+    }),
+    keepalive: true
+  }).catch(error => console.warn('Unable to send analytics event.', error));
 }
 
 async function fetchQuote(mood) {
@@ -86,7 +106,7 @@ function renderCategories(categories) {
   const visibleCategories = categories.filter(category => !['welcome', 'distract'].includes(category.slug));
   noteGrid.innerHTML = visibleCategories.length
     ? visibleCategories.map(category => `
-      <button class="mood-card ${categoryClass(category.color)}" data-mood="${escapeHtml(category.slug)}" data-track="mood-${escapeHtml(category.slug)}">
+      <button class="mood-card ${categoryClass(category.color)}" data-mood="${escapeHtml(category.slug)}" data-category-id="${category.id}" data-track="mood-${escapeHtml(category.slug)}">
         <span class="card-icon">${categoryIcon(category.slug)}</span>
         <strong>${escapeHtml(category.card_title || `A little ${category.name.toLowerCase()}`)}</strong>
         <small>${escapeHtml(categoryDescription(category))}</small>
@@ -95,7 +115,7 @@ function renderCategories(categories) {
     : '<p class="notes-loading">There are no feeling categories yet.</p>';
 
   noteGrid.querySelectorAll('.mood-card').forEach(card => card.addEventListener('click', () => {
-    recordEvent('click', { target: card.dataset.track, mood: card.dataset.mood });
+    recordEvent('click', { target: card.dataset.track, mood: card.dataset.mood, categoryId: Number(card.dataset.categoryId) });
     showMessage(card.dataset.mood);
   }));
 }
@@ -112,7 +132,7 @@ async function showMessage(mood = 'welcome') {
   try {
     activeQuote = await fetchQuote(mood);
     text.textContent = activeQuote.text;
-    recordEvent('message-viewed', { mood, quoteId: activeQuote.id });
+    recordEvent('message-viewed', { mood, quoteId: activeQuote.id, categoryId: activeQuote.category_id });
   } catch (error) {
     activeQuote = null;
     text.textContent = 'The notes are taking a tiny pause. Please try again in a moment.';
@@ -132,7 +152,7 @@ async function showMainQuote() {
     label.textContent = 'a little welcome for you';
     title.textContent = 'A thought to start with.';
     text.textContent = quote.text;
-    recordEvent('main-quote-seen', { quoteId: quote.id, mood: quote.category.slug });
+    recordEvent('main-quote-seen', { quoteId: quote.id, categoryId: quote.category.id, mood: quote.category.slug });
     modal.classList.add('is-open');
     modal.setAttribute('aria-hidden', 'false');
     if (quote.popup.frequency === 'day') localStorage.setItem('mainQuoteShownOn', new Date().toISOString().slice(0, 10));

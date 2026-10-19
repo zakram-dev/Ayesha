@@ -41,6 +41,13 @@
             <div class="stat-card"><strong id="stat-active-quotes">0</strong><span>active quotes</span></div>
             <div class="stat-card"><strong id="stat-categories">0</strong><span>categories</span></div>
             <div class="stat-card"><strong id="stat-active-categories">0</strong><span>active categories</span></div>
+            <div class="stat-card"><strong id="stat-events">0</strong><span>tracked interactions</span></div>
+          </section>
+          <section class="panel analytics-panel">
+            <div class="analytics-columns">
+              <div><h2>Popular categories</h2><ol id="top-categories"><li>No interactions yet.</li></ol></div>
+              <div><h2>Popular quotes</h2><ol id="top-quotes"><li>No quote views yet.</li></ol></div>
+            </div>
           </section>
         </div>
 
@@ -70,9 +77,16 @@
               <label>Category <select id="quote-category" required></select></label>
               <label>Author <input id="quote-author" maxlength="120" /></label>
               <label>Display order <input id="quote-order" type="number" value="0" /></label>
-              <label class="checkbox"><input id="quote-active" type="checkbox" checked /> Active</label>
+              <label>Status
+                <select id="quote-status">
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
               <label class="checkbox"><input id="quote-main" type="checkbox" /> Make main quote</label>
               <button class="button" id="quote-submit" type="submit">Add quote</button>
+              <button class="button secondary" id="quote-preview" type="button">Preview</button>
               <button class="button secondary" id="quote-cancel" type="button" hidden>Cancel edit</button>
             </form>
           </section>
@@ -100,6 +114,16 @@
         </div>
       </div>
     </main>
+    <div class="preview-modal" id="preview-modal" hidden>
+      <div class="preview-card" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+        <button class="preview-close" id="preview-close" type="button" aria-label="Close preview">×</button>
+        <p class="eyebrow">quote preview</p>
+        <h2 id="preview-title">Here is a little something.</h2>
+        <p id="preview-text"></p>
+        <small id="preview-author"></small>
+        <button class="button" id="preview-dismiss" type="button">Back to editing</button>
+      </div>
+    </div>
     <script src="/admin/admin.js"></script>
   </body>
 </html>

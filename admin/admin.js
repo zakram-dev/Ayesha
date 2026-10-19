@@ -41,7 +41,7 @@ function renderQuotes() {
   document.querySelector('#quotes').innerHTML = quotes
     .filter(quote => (!categoryFilter || String(quote.category_id) === categoryFilter)
       && (quote.text.toLowerCase().includes(search) || quote.category_name.toLowerCase().includes(search)))
-    .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">main</b>' : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${quote.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
+    .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">main</b>' : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${escapeHtml(quote.status || (quote.active ? 'active' : 'archived'))}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.status === 'active' ? 'Archive' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
 }
 
 function renderCategories() {
@@ -64,6 +64,13 @@ async function loadData() {
   document.querySelector('#stat-active-quotes').textContent = dashboard.quotes.active || 0;
   document.querySelector('#stat-categories').textContent = dashboard.categories.total;
   document.querySelector('#stat-active-categories').textContent = dashboard.categories.active || 0;
+  document.querySelector('#stat-events').textContent = dashboard.events.total;
+  document.querySelector('#top-categories').innerHTML = dashboard.topCategories.length
+    ? dashboard.topCategories.map(item => `<li><strong>${escapeHtml(item.name)}</strong> <span>${item.interactions}</span></li>`).join('')
+    : '<li>No interactions yet.</li>';
+  document.querySelector('#top-quotes').innerHTML = dashboard.topQuotes.length
+    ? dashboard.topQuotes.map(item => `<li><strong>${escapeHtml(item.text)}</strong><small>${escapeHtml(item.category_name)} · ${item.views} views</small></li>`).join('')
+    : '<li>No quote views yet.</li>';
   document.querySelector('#popup-enabled').checked = settings.enabled;
   document.querySelector('#popup-delay').value = settings.delay;
   document.querySelector('#popup-frequency').value = settings.frequency;
@@ -98,13 +105,14 @@ document.querySelector('#quote-form').addEventListener('submit', async event => 
       categoryId: document.querySelector('#quote-category').value,
       author: document.querySelector('#quote-author').value,
       displayOrder: document.querySelector('#quote-order').value,
-      active: document.querySelector('#quote-active').checked,
+      status: document.querySelector('#quote-status').value,
+      active: document.querySelector('#quote-status').value === 'active',
       isMainQuote: document.querySelector('#quote-main').checked
     };
     await request(editingQuoteId ? `/api/admin/quotes/${editingQuoteId}` : '/api/admin/quotes', { method: editingQuoteId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
     editingQuoteId = null;
     event.target.reset();
-    document.querySelector('#quote-active').checked = true;
+    document.querySelector('#quote-status').value = 'draft';
     document.querySelector('#quote-submit').textContent = 'Add quote';
     document.querySelector('#quote-cancel').hidden = true;
     await loadData();
@@ -151,7 +159,7 @@ document.querySelector('#quotes').addEventListener('click', async event => {
       document.querySelector('#quote-category').value = quote.category_id;
       document.querySelector('#quote-author').value = quote.author || '';
       document.querySelector('#quote-order').value = quote.display_order;
-      document.querySelector('#quote-active').checked = Boolean(quote.active);
+      document.querySelector('#quote-status').value = quote.status || (quote.active ? 'active' : 'archived');
       document.querySelector('#quote-main').checked = Boolean(quote.is_main_quote);
       document.querySelector('#quote-submit').textContent = 'Save changes';
       document.querySelector('#quote-cancel').hidden = false;
@@ -159,7 +167,10 @@ document.querySelector('#quotes').addEventListener('click', async event => {
       return;
     }
     if (button.dataset.action === 'delete-quote' && confirm('Delete this quote?')) await request(`/api/admin/quotes/${quote.id}`, { method: 'DELETE' });
-    if (button.dataset.action === 'toggle-quote') await request(`/api/admin/quotes/${quote.id}`, { method: 'PUT', body: JSON.stringify({ ...quote, categoryId: quote.category_id, active: !quote.active, isMainQuote: quote.is_main_quote }) });
+    if (button.dataset.action === 'toggle-quote') {
+      const nextStatus = quote.status === 'active' ? 'archived' : 'active';
+      await request(`/api/admin/quotes/${quote.id}`, { method: 'PUT', body: JSON.stringify({ ...quote, categoryId: quote.category_id, status: nextStatus, active: nextStatus === 'active', isMainQuote: quote.is_main_quote }) });
+    }
     await loadData();
     showStatus('Quote updated.');
   } catch (error) {
@@ -175,7 +186,7 @@ document.querySelector('#categories').addEventListener('click', async event => {
     if (button.dataset.action === 'add-quote') {
       editingQuoteId = null;
       document.querySelector('#quote-form').reset();
-      document.querySelector('#quote-active').checked = true;
+      document.querySelector('#quote-status').value = 'draft';
       document.querySelector('#quote-submit').textContent = 'Add quote';
       document.querySelector('#quote-cancel').hidden = true;
       document.querySelector('#quote-category').value = String(category.id);
@@ -231,10 +242,21 @@ document.querySelector('#category-cancel').addEventListener('click', () => {
 document.querySelector('#quote-cancel').addEventListener('click', () => {
   editingQuoteId = null;
   document.querySelector('#quote-form').reset();
-  document.querySelector('#quote-active').checked = true;
+  document.querySelector('#quote-status').value = 'draft';
   document.querySelector('#quote-submit').textContent = 'Add quote';
   document.querySelector('#quote-cancel').hidden = true;
 });
+function showQuotePreview() {
+  const quoteText = document.querySelector('#quote-text').value.trim();
+  if (!quoteText) return showStatus('Enter quote text before previewing.', true);
+  document.querySelector('#preview-text').textContent = quoteText;
+  document.querySelector('#preview-author').textContent = document.querySelector('#quote-author').value.trim();
+  document.querySelector('#preview-modal').hidden = false;
+}
+document.querySelector('#quote-preview').addEventListener('click', showQuotePreview);
+['preview-close', 'preview-dismiss'].forEach(id => document.querySelector(`#${id}`).addEventListener('click', () => {
+  document.querySelector('#preview-modal').hidden = true;
+}));
 logoutButton.addEventListener('click', async () => {
   await request('/api/admin/logout', { method: 'POST' });
   window.location.reload();
