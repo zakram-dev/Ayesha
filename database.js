@@ -15,6 +15,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     slug TEXT NOT NULL UNIQUE,
+    card_title TEXT,
     description TEXT,
     color TEXT,
     active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
@@ -53,23 +54,41 @@ db.exec(`
   );
 `);
 
+const categoryColumns = db.prepare('PRAGMA table_info(categories)').all();
+if (!categoryColumns.some(column => column.name === 'card_title')) {
+  db.exec('ALTER TABLE categories ADD COLUMN card_title TEXT');
+}
+
 const seedCategories = db.prepare(`
-  INSERT INTO categories (name, slug, description, color)
-  VALUES (@name, @slug, @description, @color)
+  INSERT INTO categories (name, slug, card_title, description, color)
+  VALUES (@name, @slug, @cardTitle, @description, @color)
   ON CONFLICT(slug) DO NOTHING
 `);
 
 const seedDefaultCategories = db.transaction(() => {
   [
-    { name: 'Welcome', slug: 'welcome', description: 'A gentle note for any day.', color: 'peach' },
-    { name: 'Sunny', slug: 'sunny', description: 'A tiny reminder to glow.', color: 'peach' },
-    { name: 'Soft', slug: 'soft', description: 'Something gentle for you.', color: 'pink' },
-    { name: 'Brave', slug: 'brave', description: 'For when you need a nudge.', color: 'lavender' },
-    { name: 'Distraction', slug: 'distract', description: 'A small, lovely detour.', color: 'ink' }
+    { name: 'Welcome', slug: 'welcome', cardTitle: 'A little welcome', description: 'A gentle note for any day.', color: 'peach' },
+    { name: 'Sunny', slug: 'sunny', cardTitle: 'For a sunny moment', description: 'A tiny reminder to glow.', color: 'peach' },
+    { name: 'Soft', slug: 'soft', cardTitle: 'For a soft moment', description: 'Something gentle for you.', color: 'pink' },
+    { name: 'Brave', slug: 'brave', cardTitle: 'For a brave moment', description: 'For when you need a nudge.', color: 'lavender' },
+    { name: 'Distraction', slug: 'distract', cardTitle: 'A lovely little detour', description: 'A small, lovely detour.', color: 'ink' }
   ].forEach(category => seedCategories.run(category));
 });
 
 seedDefaultCategories();
+
+db.prepare(`
+  UPDATE categories
+  SET card_title = CASE slug
+    WHEN 'welcome' THEN 'A little welcome'
+    WHEN 'sunny' THEN 'For a sunny moment'
+    WHEN 'soft' THEN 'For a soft moment'
+    WHEN 'brave' THEN 'For a brave moment'
+    WHEN 'distract' THEN 'A lovely little detour'
+    ELSE 'A little ' || LOWER(name)
+  END
+  WHERE card_title IS NULL OR TRIM(card_title) = ''
+`).run();
 
 const seedQuotes = db.transaction(() => {
   const quoteCount = db.prepare('SELECT COUNT(*) AS count FROM quotes').get().count;

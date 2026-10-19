@@ -88,7 +88,7 @@ function renderCategories(categories) {
     ? visibleCategories.map(category => `
       <button class="mood-card ${categoryClass(category.color)}" data-mood="${escapeHtml(category.slug)}" data-track="mood-${escapeHtml(category.slug)}">
         <span class="card-icon">${categoryIcon(category.slug)}</span>
-        <strong>For a ${escapeHtml(category.name.toLowerCase())} moment</strong>
+        <strong>${escapeHtml(category.card_title || `For a ${category.name.toLowerCase()} moment`)}</strong>
         <small>${escapeHtml(categoryDescription(category))}</small>
         <i>→</i>
       </button>`).join('')

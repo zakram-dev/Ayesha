@@ -30,7 +30,7 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/categories', (req, res) => {
   const categories = db.prepare(`
-    SELECT id, name, slug, description, color
+    SELECT id, name, slug, card_title, description, color
     FROM categories
     WHERE active = 1
     ORDER BY id
@@ -141,7 +141,7 @@ app.put('/api/admin/settings', requireAdmin, (req, res) => {
 
 app.get('/api/admin/categories', requireAdmin, (req, res) => {
   res.json(db.prepare(`
-    SELECT c.id, c.name, c.slug, c.description, c.color, c.active,
+    SELECT c.id, c.name, c.slug, c.card_title, c.description, c.color, c.active,
       COUNT(q.id) AS quote_count
     FROM categories c
     LEFT JOIN quotes q ON q.category_id = c.id
@@ -156,10 +156,11 @@ app.post('/api/admin/categories', requireAdmin, (req, res) => {
     const slug = cleanText(req.body?.slug, 'Slug', { maxLength: 80 })
       .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
     if (!slug) throw new Error('Slug must contain letters or numbers.');
+    const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { maxLength: 120 });
     const result = db.prepare(`
-      INSERT INTO categories (name, slug, description, color)
-      VALUES (?, ?, ?, ?)
-    `).run(name, slug, cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 }), cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 }));
+      INSERT INTO categories (name, slug, card_title, description, color)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, slug, cardTitle, cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 }), cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 }));
     res.status(201).json({ id: result.lastInsertRowid });
   } catch (error) {
     res.status(400).json({ error: error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'That category name or slug already exists.' : error.message });
@@ -174,13 +175,14 @@ app.put('/api/admin/categories/:id', requireAdmin, (req, res) => {
     const slug = cleanText(req.body?.slug, 'Slug', { maxLength: 80 })
       .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
     if (!slug) throw new Error('Slug must contain letters or numbers.');
+    const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { maxLength: 120 });
     const description = cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 });
     const color = cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 });
     const result = db.prepare(`
       UPDATE categories
-      SET name = ?, slug = ?, description = ?, color = ?, active = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, slug = ?, card_title = ?, description = ?, color = ?, active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(name, slug, description, color, parseBoolean(req.body?.active, true) ? 1 : 0, id);
+    `).run(name, slug, cardTitle, description, color, parseBoolean(req.body?.active, true) ? 1 : 0, id);
     if (!result.changes) return res.status(404).json({ error: 'Category not found.' });
     res.json({ ok: true });
   } catch (error) {

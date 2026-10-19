@@ -41,7 +41,7 @@ function renderQuotes() {
 }
 
 function renderCategories() {
-  document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}</td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
+  document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
 }
 
 async function loadData() {
@@ -111,6 +111,7 @@ document.querySelector('#category-form').addEventListener('submit', async event 
     const payload = {
       name: document.querySelector('#category-name').value,
       slug: document.querySelector('#category-slug').value,
+      cardTitle: document.querySelector('#category-card-title').value,
       description: document.querySelector('#category-description').value,
       color: document.querySelector('#category-color').value,
       active: document.querySelector('#category-active')?.checked ?? true
@@ -165,6 +166,7 @@ document.querySelector('#categories').addEventListener('click', async event => {
       editingCategoryId = category.id;
       document.querySelector('#category-name').value = category.name;
       document.querySelector('#category-slug').value = category.slug;
+      document.querySelector('#category-card-title').value = category.card_title || '';
       document.querySelector('#category-description').value = category.description || '';
       document.querySelector('#category-color').value = category.color || '';
       document.querySelector('#category-submit').textContent = 'Save changes';
