@@ -30,7 +30,9 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/categories', (req, res) => {
   const categories = db.prepare(`
-    SELECT id, name, slug, card_title, description, color
+    SELECT id, name, slug,
+      COALESCE(NULLIF(TRIM(card_title), ''), 'A little ' || LOWER(name)) AS card_title,
+      description, color
     FROM categories
     WHERE active = 1
     ORDER BY id
@@ -141,7 +143,9 @@ app.put('/api/admin/settings', requireAdmin, (req, res) => {
 
 app.get('/api/admin/categories', requireAdmin, (req, res) => {
   res.json(db.prepare(`
-    SELECT c.id, c.name, c.slug, c.card_title, c.description, c.color, c.active,
+    SELECT c.id, c.name, c.slug,
+      COALESCE(NULLIF(TRIM(c.card_title), ''), 'A little ' || LOWER(c.name)) AS card_title,
+      c.description, c.color, c.active,
       COUNT(q.id) AS quote_count
     FROM categories c
     LEFT JOIN quotes q ON q.category_id = c.id
