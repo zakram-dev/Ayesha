@@ -52,6 +52,15 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS visitor_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TEXT
+  );
 `);
 
 const categoryColumns = db.prepare('PRAGMA table_info(categories)').all();

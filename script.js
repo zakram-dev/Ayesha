@@ -3,6 +3,8 @@ const label = document.querySelector('#modal-label');
 const title = document.querySelector('#modal-title');
 const text = document.querySelector('#modal-message');
 const noteGrid = document.querySelector('.note-grid');
+const visitorMessageForm = document.querySelector('#visitor-message-form');
+const visitorMessageStatus = document.querySelector('#visitor-message-status');
 let activeMood = 'welcome';
 let activeQuote = null;
 
@@ -172,6 +174,46 @@ document.querySelector('#close-modal').addEventListener('click', closeModal);
 modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 function closeModal() { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
+
+function renderApprovedMessages(messages) {
+  const container = document.querySelector('#approved-messages');
+  container.innerHTML = messages.length
+    ? `<h3>Notes from kind people</h3>${messages.map(item => `
+      <article class="approved-message">
+        <p>“${escapeHtml(item.message)}”</p>
+        <small>${escapeHtml(item.name || 'Someone kind')}</small>
+      </article>`).join('')}`
+    : '';
+}
+
+fetch('/api/messages').then(response => response.ok ? response.json() : []).then(renderApprovedMessages)
+  .catch(error => console.warn('Unable to load visitor messages.', error));
+
+visitorMessageForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const submitButton = visitorMessageForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  visitorMessageStatus.textContent = 'Sending your note...';
+  try {
+    const response = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.querySelector('#visitor-name').value,
+        message: document.querySelector('#visitor-message').value,
+        website: document.querySelector('#visitor-website').value
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Your note could not be sent.');
+    visitorMessageForm.reset();
+    visitorMessageStatus.textContent = 'Your note was sent with love for review.';
+  } catch (error) {
+    visitorMessageStatus.textContent = error.message;
+  } finally {
+    submitButton.disabled = false;
+  }
+});
 
 fetchCategories().then(renderCategories).catch(error => {
   noteGrid.innerHTML = '<p class="notes-loading">The feelings are taking a tiny pause. Please try again soon.</p>';

@@ -9,6 +9,7 @@ const port = Number(process.env.PORT) || 8080;
 const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
 const sessions = new Map();
+const messageSubmissionTimes = new Map();
 
 if (!adminPassword || !sessionSecret) {
   throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
@@ -63,6 +64,38 @@ app.get('/api/categories', (req, res) => {
   `).all();
 
   res.json(categories);
+});
+
+app.get('/api/messages', (req, res) => {
+  res.json(db.prepare(`
+    SELECT id, name, message, created_at
+    FROM visitor_messages
+    WHERE status = 'approved'
+    ORDER BY created_at DESC, id DESC
+    LIMIT 12
+  `).all());
+});
+
+app.post('/api/messages', (req, res) => {
+  const honeypot = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
+  if (honeypot) return res.status(204).end();
+
+  const forwardedIp = req.get('CF-Connecting-IP') || req.ip || 'unknown';
+  const now = Date.now();
+  const lastSubmission = messageSubmissionTimes.get(forwardedIp) || 0;
+  if (now - lastSubmission < 60 * 1000) {
+    return res.status(429).json({ error: 'Please wait a minute before sending another note.' });
+  }
+
+  try {
+    const message = cleanText(req.body?.message, 'Message', { maxLength: 500 });
+    const name = cleanText(req.body?.name, 'Name', { required: false, maxLength: 80 });
+    db.prepare('INSERT INTO visitor_messages (name, message) VALUES (?, ?)').run(name, message);
+    messageSubmissionTimes.set(forwardedIp, now);
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 function safeCompare(left, right) {
@@ -158,6 +191,7 @@ app.get('/api/admin/settings', requireAdmin, (req, res) => {
     delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
     frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session'
   });
+
 });
 
 app.put('/api/admin/settings', requireAdmin, (req, res) => {
@@ -181,6 +215,34 @@ app.put('/api/admin/settings', requireAdmin, (req, res) => {
   });
   update();
   res.json({ ok: true });
+});
+
+app.get('/api/admin/messages', requireAdmin, (req, res) => {
+  res.json(db.prepare(`
+    SELECT id, name, message, status, created_at, reviewed_at
+    FROM visitor_messages
+    ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC, id DESC
+  `).all());
+});
+
+app.put('/api/admin/messages/:id', requireAdmin, (req, res) => {
+  const status = req.body?.status;
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Message status is invalid.' });
+  }
+  const result = db.prepare(`
+    UPDATE visitor_messages
+    SET status = ?, reviewed_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+    WHERE id = ?
+  `).run(status, status, Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: 'Message not found.' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/messages/:id', requireAdmin, (req, res) => {
+  const result = db.prepare('DELETE FROM visitor_messages WHERE id = ?').run(Number(req.params.id));
+  if (!result.changes) return res.status(404).json({ error: 'Message not found.' });
+  res.status(204).end();
 });
 
 app.get('/api/admin/categories', requireAdmin, (req, res) => {

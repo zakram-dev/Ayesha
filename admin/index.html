@@ -32,6 +32,7 @@
           <button class="admin-tab active" type="button" data-tab="overview">Overview</button>
           <button class="admin-tab" type="button" data-tab="categories">Categories</button>
           <button class="admin-tab" type="button" data-tab="quotes">Quotes</button>
+          <button class="admin-tab" type="button" data-tab="messages">Messages</button>
           <button class="admin-tab" type="button" data-tab="settings">Settings</button>
         </nav>
 
@@ -110,6 +111,13 @@
               <button class="button secondary" id="category-cancel" type="button" hidden>Cancel edit</button>
             </form>
             <div class="table-wrap"><table><thead><tr><th>Name</th><th>Slug</th><th>Quotes</th><th>Status</th><th>Actions</th></tr></thead><tbody id="categories"></tbody></table></div>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-panel="messages">
+          <section class="panel">
+            <div class="section-header"><h2>Visitor messages</h2><select id="message-status-filter" aria-label="Filter messages by status"><option value="">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div>
+            <div class="message-list" id="messages"></div>
           </section>
         </div>
       </div>

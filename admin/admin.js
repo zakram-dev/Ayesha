@@ -4,6 +4,7 @@ const logoutButton = document.querySelector('#logout');
 const status = document.querySelector('#status');
 let categories = [];
 let quotes = [];
+let messages = [];
 let editingQuoteId = null;
 let editingCategoryId = null;
 
@@ -48,18 +49,36 @@ function renderCategories() {
   document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="add-quote" data-id="${category.id}">Add quote</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
 }
 
+function renderMessages() {
+  const filter = document.querySelector('#message-status-filter').value;
+  const visibleMessages = messages.filter(message => !filter || message.status === filter);
+  document.querySelector('#messages').innerHTML = visibleMessages.length
+    ? visibleMessages.map(message => `
+      <article class="admin-message">
+        <div><span class="message-badge ${message.status}">${message.status}</span><small>${escapeHtml(message.name || 'Anonymous')} · ${escapeHtml(message.created_at)}</small></div>
+        <p>${escapeHtml(message.message)}</p>
+        <div class="message-actions">
+          ${message.status !== 'approved' ? '<button class="small-button" data-action="approve-message" data-id="' + message.id + '">Approve</button>' : ''}
+          ${message.status !== 'rejected' ? '<button class="small-button secondary" data-action="reject-message" data-id="' + message.id + '">Reject</button>' : ''}
+          <button class="small-button danger" data-action="delete-message" data-id="${message.id}">Delete</button>
+        </div>
+      </article>`).join('')
+    : '<p class="empty-message">No messages in this view.</p>';
+}
+
 function activateTab(tabName) {
   document.querySelectorAll('.admin-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tabName));
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tabName));
 }
 
 async function loadData() {
-  const [dashboard, settings, loadedCategories, loadedQuotes] = await Promise.all([
+  const [dashboard, settings, loadedCategories, loadedQuotes, loadedMessages] = await Promise.all([
     request('/api/admin/dashboard'), request('/api/admin/settings'),
-    request('/api/admin/categories'), request('/api/admin/quotes')
+    request('/api/admin/categories'), request('/api/admin/quotes'), request('/api/admin/messages')
   ]);
   categories = loadedCategories;
   quotes = loadedQuotes;
+  messages = loadedMessages;
   document.querySelector('#stat-quotes').textContent = dashboard.quotes.total;
   document.querySelector('#stat-active-quotes').textContent = dashboard.quotes.active || 0;
   document.querySelector('#stat-categories').textContent = dashboard.categories.total;
@@ -77,6 +96,7 @@ async function loadData() {
   renderCategoryOptions();
   renderQuotes();
   renderCategories();
+  renderMessages();
 }
 
 async function enterAdmin() {
@@ -217,6 +237,7 @@ document.querySelector('#categories').addEventListener('click', async event => {
 
 document.querySelector('#quote-search').addEventListener('input', renderQuotes);
 document.querySelector('#quote-category-filter').addEventListener('change', renderQuotes);
+document.querySelector('#message-status-filter').addEventListener('change', renderMessages);
 document.querySelectorAll('.admin-tab').forEach(button => {
   button.addEventListener('click', () => activateTab(button.dataset.tab));
 });
@@ -245,6 +266,26 @@ document.querySelector('#quote-cancel').addEventListener('click', () => {
   document.querySelector('#quote-status').value = 'draft';
   document.querySelector('#quote-submit').textContent = 'Add quote';
   document.querySelector('#quote-cancel').hidden = true;
+});
+document.querySelector('#messages').addEventListener('click', async event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  try {
+    if (button.dataset.action === 'delete-message' && !confirm('Delete this message?')) return;
+    if (button.dataset.action === 'delete-message') {
+      await request(`/api/admin/messages/${button.dataset.id}`, { method: 'DELETE' });
+    } else {
+      const nextStatus = button.dataset.action === 'approve-message' ? 'approved' : 'rejected';
+      await request(`/api/admin/messages/${button.dataset.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: nextStatus })
+      });
+    }
+    await loadData();
+    showStatus('Message updated.');
+  } catch (error) {
+    showStatus(error.message, true);
+  }
 });
 function showQuotePreview() {
   const quoteText = document.querySelector('#quote-text').value.trim();
