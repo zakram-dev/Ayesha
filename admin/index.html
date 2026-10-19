@@ -28,59 +28,76 @@
 
       <div id="admin-content" hidden>
         <p class="status" id="status" role="status"></p>
-        <section class="stats-grid">
-          <div class="stat-card"><strong id="stat-quotes">0</strong><span>total quotes</span></div>
-          <div class="stat-card"><strong id="stat-active-quotes">0</strong><span>active quotes</span></div>
-          <div class="stat-card"><strong id="stat-categories">0</strong><span>categories</span></div>
-          <div class="stat-card"><strong id="stat-active-categories">0</strong><span>active categories</span></div>
-        </section>
-        <section class="panel">
-          <div class="section-header"><h2>Main quote popup</h2></div>
-          <form class="settings-form" id="settings-form">
-            <label class="checkbox"><input id="popup-enabled" type="checkbox" /> Show popup on public page</label>
-            <label>Delay (milliseconds) <input id="popup-delay" type="number" min="0" max="60000" step="100" required /></label>
-            <label>Show frequency
-              <select id="popup-frequency">
-                <option value="session">Once per browser session</option>
-                <option value="day">Once per day</option>
-                <option value="always">Every page load</option>
-              </select>
-            </label>
-            <button class="button" type="submit">Save popup settings</button>
-          </form>
-        </section>
-        <section class="panel">
-          <div class="section-header"><h2>Add a quote</h2></div>
-          <form class="quote-form" id="quote-form">
-            <label class="wide">Quote <textarea id="quote-text" maxlength="2000" required></textarea></label>
-            <label>Category <select id="quote-category" required></select></label>
-            <label>Author <input id="quote-author" maxlength="120" /></label>
-            <label>Display order <input id="quote-order" type="number" value="0" /></label>
-            <label class="checkbox"><input id="quote-active" type="checkbox" checked /> Active</label>
-            <label class="checkbox"><input id="quote-main" type="checkbox" /> Make main quote</label>
-            <button class="button" id="quote-submit" type="submit">Add quote</button>
-            <button class="button secondary" id="quote-cancel" type="button" hidden>Cancel edit</button>
-          </form>
-        </section>
+        <nav class="admin-tabs" aria-label="Admin sections">
+          <button class="admin-tab active" type="button" data-tab="overview">Overview</button>
+          <button class="admin-tab" type="button" data-tab="categories">Categories</button>
+          <button class="admin-tab" type="button" data-tab="quotes">Quotes</button>
+          <button class="admin-tab" type="button" data-tab="settings">Settings</button>
+        </nav>
 
-        <section class="panel">
-          <div class="section-header"><h2>Quotes</h2><input id="quote-search" placeholder="Search quotes" /></div>
-          <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Category</th><th>Status</th><th>Actions</th></tr></thead><tbody id="quotes"></tbody></table></div>
-        </section>
+        <div class="tab-panel active" data-panel="overview">
+          <section class="stats-grid">
+            <div class="stat-card"><strong id="stat-quotes">0</strong><span>total quotes</span></div>
+            <div class="stat-card"><strong id="stat-active-quotes">0</strong><span>active quotes</span></div>
+            <div class="stat-card"><strong id="stat-categories">0</strong><span>categories</span></div>
+            <div class="stat-card"><strong id="stat-active-categories">0</strong><span>active categories</span></div>
+          </section>
+        </div>
 
-        <section class="panel">
-          <div class="section-header"><h2>Categories</h2></div>
-          <form class="category-form" id="category-form">
-            <input id="category-name" placeholder="Name" maxlength="80" required />
-            <input id="category-slug" placeholder="slug" maxlength="80" required />
-            <input id="category-card-title" placeholder="Public card title (optional)" maxlength="120" />
-            <input id="category-description" placeholder="Description" maxlength="300" />
-            <input id="category-color" placeholder="Color name" maxlength="40" />
-            <button class="button" id="category-submit" type="submit">Add category</button>
-            <button class="button secondary" id="category-cancel" type="button" hidden>Cancel edit</button>
-          </form>
-          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Slug</th><th>Quotes</th><th>Status</th><th>Actions</th></tr></thead><tbody id="categories"></tbody></table></div>
-        </section>
+        <div class="tab-panel" data-panel="settings">
+          <section class="panel">
+            <div class="section-header"><h2>Main quote popup</h2></div>
+            <form class="settings-form" id="settings-form">
+              <label class="checkbox"><input id="popup-enabled" type="checkbox" /> Show popup on public page</label>
+              <label>Delay (milliseconds) <input id="popup-delay" type="number" min="0" max="60000" step="100" required /></label>
+              <label>Show frequency
+                <select id="popup-frequency">
+                  <option value="session">Once per browser session</option>
+                  <option value="day">Once per day</option>
+                  <option value="always">Every page load</option>
+                </select>
+              </label>
+              <button class="button" type="submit">Save popup settings</button>
+            </form>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-panel="quotes">
+          <section class="panel">
+            <div class="section-header"><h2>Add a quote</h2></div>
+            <form class="quote-form" id="quote-form">
+              <label class="wide">Quote <textarea id="quote-text" maxlength="2000" required></textarea></label>
+              <label>Category <select id="quote-category" required></select></label>
+              <label>Author <input id="quote-author" maxlength="120" /></label>
+              <label>Display order <input id="quote-order" type="number" value="0" /></label>
+              <label class="checkbox"><input id="quote-active" type="checkbox" checked /> Active</label>
+              <label class="checkbox"><input id="quote-main" type="checkbox" /> Make main quote</label>
+              <button class="button" id="quote-submit" type="submit">Add quote</button>
+              <button class="button secondary" id="quote-cancel" type="button" hidden>Cancel edit</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-header"><h2>Quotes</h2><div class="quote-filters"><input id="quote-search" placeholder="Search quotes" /><select id="quote-category-filter" aria-label="Filter quotes by category"><option value="">All categories</option></select></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Category</th><th>Status</th><th>Actions</th></tr></thead><tbody id="quotes"></tbody></table></div>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-panel="categories">
+          <section class="panel">
+            <div class="section-header"><h2>Categories</h2></div>
+            <form class="category-form" id="category-form">
+              <input id="category-name" placeholder="Name" maxlength="80" required />
+              <input id="category-slug" placeholder="slug" maxlength="80" required />
+              <input id="category-card-title" placeholder="Public card title (optional)" maxlength="120" />
+              <input id="category-description" placeholder="Description" maxlength="300" />
+              <input id="category-color" placeholder="Color name" maxlength="40" />
+              <button class="button" id="category-submit" type="submit">Add category</button>
+              <button class="button secondary" id="category-cancel" type="button" hidden>Cancel edit</button>
+            </form>
+            <div class="table-wrap"><table><thead><tr><th>Name</th><th>Slug</th><th>Quotes</th><th>Status</th><th>Actions</th></tr></thead><tbody id="categories"></tbody></table></div>
+          </section>
+        </div>
       </div>
     </main>
     <script src="/admin/admin.js"></script>

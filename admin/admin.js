@@ -28,20 +28,29 @@ function showStatus(message, isError = false) {
 }
 
 function renderCategoryOptions() {
-  document.querySelector('#quote-category').innerHTML = categories
+  const options = categories
     .filter(category => category.active)
-    .map(category => `<option value="${category.id}">${category.name}</option>`).join('');
+    .map(category => `<option value="${category.id}">${escapeHtml(category.name)}</option>`).join('');
+  document.querySelector('#quote-category').innerHTML = options;
+  document.querySelector('#quote-category-filter').innerHTML = `<option value="">All categories</option>${categories.map(category => `<option value="${category.id}">${escapeHtml(category.name)}</option>`).join('')}`;
 }
 
 function renderQuotes() {
   const search = document.querySelector('#quote-search').value.toLowerCase();
+  const categoryFilter = document.querySelector('#quote-category-filter').value;
   document.querySelector('#quotes').innerHTML = quotes
-    .filter(quote => quote.text.toLowerCase().includes(search) || quote.category_name.toLowerCase().includes(search))
+    .filter(quote => (!categoryFilter || String(quote.category_id) === categoryFilter)
+      && (quote.text.toLowerCase().includes(search) || quote.category_name.toLowerCase().includes(search)))
     .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">main</b>' : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${quote.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
 }
 
 function renderCategories() {
-  document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
+  document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="add-quote" data-id="${category.id}">Add quote</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
+}
+
+function activateTab(tabName) {
+  document.querySelectorAll('.admin-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tabName));
+  document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tabName));
 }
 
 async function loadData() {
@@ -163,6 +172,17 @@ document.querySelector('#categories').addEventListener('click', async event => {
   if (!button) return;
   const category = categories.find(item => item.id === Number(button.dataset.id));
   try {
+    if (button.dataset.action === 'add-quote') {
+      editingQuoteId = null;
+      document.querySelector('#quote-form').reset();
+      document.querySelector('#quote-active').checked = true;
+      document.querySelector('#quote-submit').textContent = 'Add quote';
+      document.querySelector('#quote-cancel').hidden = true;
+      document.querySelector('#quote-category').value = String(category.id);
+      activateTab('quotes');
+      document.querySelector('#quote-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     if (button.dataset.action === 'edit-category') {
       editingCategoryId = category.id;
       document.querySelector('#category-name').value = category.name;
@@ -185,6 +205,10 @@ document.querySelector('#categories').addEventListener('click', async event => {
 });
 
 document.querySelector('#quote-search').addEventListener('input', renderQuotes);
+document.querySelector('#quote-category-filter').addEventListener('change', renderQuotes);
+document.querySelectorAll('.admin-tab').forEach(button => {
+  button.addEventListener('click', () => activateTab(button.dataset.tab));
+});
 document.querySelector('#settings-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
