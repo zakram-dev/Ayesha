@@ -89,7 +89,7 @@ app.post('/api/messages', (req, res) => {
 
   try {
     const message = cleanText(req.body?.message, 'Message', { maxLength: 500 });
-    const name = cleanText(req.body?.name, 'Name', { required: false, maxLength: 80 });
+    const name = cleanText(req.body?.name ?? '', 'Name', { maxLength: 80 });
     db.prepare('INSERT INTO visitor_messages (name, message) VALUES (?, ?)').run(name, message);
     messageSubmissionTimes.set(forwardedIp, now);
     res.status(201).json({ ok: true });

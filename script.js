@@ -181,7 +181,7 @@ function renderApprovedMessages(messages) {
     ? `<h3>Notes from kind people</h3>${messages.map(item => `
       <article class="approved-message">
         <p>“${escapeHtml(item.message)}”</p>
-        <small>${escapeHtml(item.name || 'Someone kind')}</small>
+        <small>${escapeHtml(item.name)}</small>
       </article>`).join('')}`
     : '';
 }
