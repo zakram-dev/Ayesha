@@ -108,6 +108,7 @@ document.querySelector('#quote-form').addEventListener('submit', async event => 
 document.querySelector('#category-form').addEventListener('submit', async event => {
   event.preventDefault();
   try {
+    const wasEditing = Boolean(editingCategoryId);
     const payload = {
       name: document.querySelector('#category-name').value,
       slug: document.querySelector('#category-slug').value,
@@ -124,7 +125,7 @@ document.querySelector('#category-form').addEventListener('submit', async event 
     document.querySelector('#category-submit').textContent = 'Add category';
     document.querySelector('#category-cancel').hidden = true;
     await loadData();
-    showStatus('Category added.');
+    showStatus(wasEditing ? 'Category updated.' : 'Category added.');
   } catch (error) {
     showStatus(error.message, true);
   }

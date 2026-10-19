@@ -156,7 +156,8 @@ app.post('/api/admin/categories', requireAdmin, (req, res) => {
     const slug = cleanText(req.body?.slug, 'Slug', { maxLength: 80 })
       .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
     if (!slug) throw new Error('Slug must contain letters or numbers.');
-    const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { maxLength: 120 });
+    const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { required: false, maxLength: 120 })
+      || `A little ${name.toLowerCase()}`;
     const result = db.prepare(`
       INSERT INTO categories (name, slug, card_title, description, color)
       VALUES (?, ?, ?, ?, ?)
@@ -175,7 +176,8 @@ app.put('/api/admin/categories/:id', requireAdmin, (req, res) => {
     const slug = cleanText(req.body?.slug, 'Slug', { maxLength: 80 })
       .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
     if (!slug) throw new Error('Slug must contain letters or numbers.');
-    const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { maxLength: 120 });
+    const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { required: false, maxLength: 120 })
+      || `A little ${name.toLowerCase()}`;
     const description = cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 });
     const color = cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 });
     const result = db.prepare(`
