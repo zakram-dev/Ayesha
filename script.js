@@ -11,6 +11,8 @@ let activeQuote = null;
 const analyticsKey = 'ayesha-gift-insights';
 const recentQuotesKey = 'ayesha-recent-quotes';
 const analyticsSessionKey = 'ayesha-analytics-session';
+const featureAnnouncementKey = 'ayesha-feature-announcement-v1';
+let featureAnnouncementActive = false;
 function getAnalyticsSessionId() {
   let sessionId = sessionStorage.getItem(analyticsSessionKey);
   if (!sessionId) {
@@ -166,14 +168,37 @@ async function showMainQuote() {
   }
 }
 
+function showFeatureAnnouncement() {
+  featureAnnouncementActive = true;
+  label.textContent = 'new on this little corner';
+  title.textContent = 'Leave a little note for Zohaib.';
+  text.textContent = 'You can now send a custom note, compliment, or kind message to Zohaib. Write something sweet and it may appear in the notes from kind people after it is approved.';
+  document.querySelector('#another-note').textContent = 'send a little note →';
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+  localStorage.setItem(featureAnnouncementKey, 'seen');
+}
+
 document.querySelector('#open-note').addEventListener('click', () => { recordEvent('click', { target: 'open-note' }); showMessage(); });
 document.querySelector('#random-note').addEventListener('click', () => { recordEvent('click', { target: 'random-note' }); showMessage(); });
 document.querySelector('#distract-me').addEventListener('click', () => { recordEvent('click', { target: 'distraction' }); showMessage('distract'); });
-document.querySelector('#another-note').addEventListener('click', () => showMessage(activeMood));
+document.querySelector('#another-note').addEventListener('click', () => {
+  if (featureAnnouncementActive) {
+    closeModal();
+    document.querySelector('#visitor-notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  showMessage(activeMood);
+});
 document.querySelector('#close-modal').addEventListener('click', closeModal);
 modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
-function closeModal() { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); }
+function closeModal() {
+  featureAnnouncementActive = false;
+  document.querySelector('#another-note').textContent = 'one more note →';
+  modal.classList.remove('is-open');
+  modal.setAttribute('aria-hidden', 'true');
+}
 
 function renderApprovedMessages(messages) {
   const container = document.querySelector('#approved-messages');
@@ -226,7 +251,9 @@ function shouldShowMainQuote(frequency) {
   return !sessionStorage.getItem('mainQuoteShown');
 }
 
-if (!sessionStorage.getItem('mainQuoteChecked')) {
+if (!localStorage.getItem(featureAnnouncementKey)) {
+  showFeatureAnnouncement();
+} else if (!sessionStorage.getItem('mainQuoteChecked')) {
   showMainQuote();
   sessionStorage.setItem('mainQuoteChecked', 'true');
 }
