@@ -257,7 +257,20 @@ app.delete('/api/admin/quotes/:id', requireAdmin, (req, res) => {
 
 app.get('/api/quotes/random', (req, res) => {
   const category = typeof req.query.category === 'string' ? req.query.category : 'welcome';
+  const excludedIds = typeof req.query.exclude === 'string'
+    ? [...new Set(req.query.exclude.split(',').map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, 10)
+    : [];
+  const exclusionClause = excludedIds.length ? `AND q.id NOT IN (${excludedIds.map(() => '?').join(',')})` : '';
   const quote = db.prepare(`
+    SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
+    FROM quotes q
+    JOIN categories c ON c.id = q.category_id
+    WHERE q.active = 1 AND c.active = 1 AND c.slug = ? ${exclusionClause}
+    ORDER BY RANDOM()
+    LIMIT 1
+  `).get(category, ...excludedIds);
+
+  const fallback = quote || db.prepare(`
     SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
@@ -266,12 +279,12 @@ app.get('/api/quotes/random', (req, res) => {
     LIMIT 1
   `).get(category);
 
-  if (!quote) return res.status(404).json({ error: 'No active quotes found for this category.' });
+  if (!fallback) return res.status(404).json({ error: 'No active quotes found for this category.' });
   res.json({
-    id: quote.id,
-    text: quote.text,
-    author: quote.author,
-    category: { id: quote.category_id, name: quote.category_name, slug: quote.category_slug }
+    id: fallback.id,
+    text: fallback.text,
+    author: fallback.author,
+    category: { id: fallback.category_id, name: fallback.category_name, slug: fallback.category_slug }
   });
 });
 

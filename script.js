@@ -7,6 +7,7 @@ let activeMood = 'welcome';
 let activeQuote = null;
 
 const analyticsKey = 'ayesha-gift-insights';
+const recentQuotesKey = 'ayesha-recent-quotes';
 function getAnalytics() {
   try {
     return JSON.parse(localStorage.getItem(analyticsKey) || '[]');
@@ -27,9 +28,34 @@ function recordEvent(type, details = {}) {
 }
 
 async function fetchQuote(mood) {
-  const response = await fetch(`/api/quotes/random?category=${encodeURIComponent(mood)}`);
+  const recentQuotes = getRecentQuotes(mood);
+  const exclude = recentQuotes.length ? `&exclude=${recentQuotes.join(',')}` : '';
+  const response = await fetch(`/api/quotes/random?category=${encodeURIComponent(mood)}${exclude}`);
   if (!response.ok) throw new Error('The quote could not be loaded right now.');
-  return response.json();
+  const quote = await response.json();
+  rememberQuote(mood, quote.id);
+  return quote;
+}
+
+function getRecentQuotes(mood) {
+  try {
+    const history = JSON.parse(localStorage.getItem(recentQuotesKey) || '{}');
+    return Array.isArray(history[mood]) ? history[mood].filter(Number.isInteger).slice(-10) : [];
+  } catch (error) {
+    console.warn('Unable to read recent quote history.', error);
+    return [];
+  }
+}
+
+function rememberQuote(mood, quoteId) {
+  try {
+    const history = JSON.parse(localStorage.getItem(recentQuotesKey) || '{}');
+    const recent = Array.isArray(history[mood]) ? history[mood] : [];
+    history[mood] = [...recent.filter(id => id !== quoteId), quoteId].slice(-10);
+    localStorage.setItem(recentQuotesKey, JSON.stringify(history));
+  } catch (error) {
+    console.warn('Unable to save recent quote history.', error);
+  }
 }
 
 async function fetchCategories() {
