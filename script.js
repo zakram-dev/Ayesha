@@ -221,10 +221,12 @@ fetch('/api/messages').then(response => response.ok ? response.json() : []).then
 function renderPrivateMessages(messages) {
   privateMessageList.innerHTML = messages.length
     ? messages.map(item => `
-      <article class="private-message">
-        <p>“${escapeHtml(item.message)}”</p>
-        <small>${escapeHtml(item.name)}</small>
-        ${item.reply ? `<div class="private-reply"><strong>Zohaib’s reply</strong><p>${escapeHtml(item.reply)}</p></div>` : ''}
+      <article class="private-thread">
+        <div class="chat-bubble visitor-bubble">
+          <small>${escapeHtml(item.name)}</small>
+          <p>“${escapeHtml(item.message)}”</p>
+        </div>
+        ${item.reply ? `<div class="chat-bubble reply-bubble"><small>Zohaib's reply</small><p>${escapeHtml(item.reply)}</p></div>` : ''}
       </article>`).join('')
     : '<p>No notes have been added here yet.</p>';
   privateMessageList.hidden = false;
