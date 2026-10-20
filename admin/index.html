@@ -68,6 +68,15 @@
               <button class="button" type="submit">Save popup settings</button>
             </form>
           </section>
+          <section class="panel">
+            <div class="section-header"><h2>Private notes password</h2></div>
+            <p>Change the password visitors use to open “Love from Kind People.” Existing notes and replies are preserved.</p>
+            <form class="settings-form" id="private-password-form">
+              <label>New password <input id="private-section-password" type="password" minlength="4" maxlength="200" autocomplete="new-password" required /></label>
+              <button class="button" type="submit">Save private password</button>
+            </form>
+            <p id="private-password-status" class="status" role="status"></p>
+          </section>
         </div>
 
         <div class="tab-panel" data-panel="quotes">

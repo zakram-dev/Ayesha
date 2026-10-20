@@ -58,10 +58,20 @@ db.exec(`
     name TEXT,
     message TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    private_section INTEGER NOT NULL DEFAULT 0 CHECK (private_section IN (0, 1)),
+    reply TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reviewed_at TEXT
   );
 `);
+
+const messageColumns = db.prepare('PRAGMA table_info(visitor_messages)').all();
+if (!messageColumns.some(column => column.name === 'private_section')) {
+  db.exec('ALTER TABLE visitor_messages ADD COLUMN private_section INTEGER NOT NULL DEFAULT 0 CHECK (private_section IN (0, 1))');
+}
+if (!messageColumns.some(column => column.name === 'reply')) {
+  db.exec('ALTER TABLE visitor_messages ADD COLUMN reply TEXT');
+}
 
 const categoryColumns = db.prepare('PRAGMA table_info(categories)').all();
 if (!categoryColumns.some(column => column.name === 'card_title')) {

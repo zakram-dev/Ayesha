@@ -5,6 +5,10 @@ const text = document.querySelector('#modal-message');
 const noteGrid = document.querySelector('.note-grid');
 const visitorMessageForm = document.querySelector('#visitor-message-form');
 const visitorMessageStatus = document.querySelector('#visitor-message-status');
+const privateModal = document.querySelector('#private-modal');
+const privateUnlockForm = document.querySelector('#private-unlock-form');
+const privateUnlockStatus = document.querySelector('#private-unlock-status');
+const privateMessageList = document.querySelector('#private-message-list');
 let activeMood = 'welcome';
 let activeQuote = null;
 
@@ -213,6 +217,51 @@ function renderApprovedMessages(messages) {
 
 fetch('/api/messages').then(response => response.ok ? response.json() : []).then(renderApprovedMessages)
   .catch(error => console.warn('Unable to load visitor messages.', error));
+
+function renderPrivateMessages(messages) {
+  privateMessageList.innerHTML = messages.length
+    ? messages.map(item => `
+      <article class="private-message">
+        <p>“${escapeHtml(item.message)}”</p>
+        <small>${escapeHtml(item.name)}</small>
+        ${item.reply ? `<div class="private-reply"><strong>Zohaib’s reply</strong><p>${escapeHtml(item.reply)}</p></div>` : ''}
+      </article>`).join('')
+    : '<p>No notes have been added here yet.</p>';
+  privateMessageList.hidden = false;
+}
+
+document.querySelector('#open-private-notes').addEventListener('click', () => {
+  privateUnlockForm.hidden = false;
+  privateMessageList.hidden = true;
+  privateUnlockStatus.textContent = '';
+  document.querySelector('#private-password').value = '';
+  privateModal.classList.add('is-open');
+  privateModal.setAttribute('aria-hidden', 'false');
+});
+document.querySelector('#close-private-modal').addEventListener('click', () => {
+  privateModal.classList.remove('is-open');
+  privateModal.setAttribute('aria-hidden', 'true');
+});
+privateUnlockForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  privateUnlockStatus.textContent = 'Checking the password...';
+  try {
+    const unlock = await fetch('/api/private-section/unlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: document.querySelector('#private-password').value })
+    });
+    const result = await unlock.json().catch(() => ({}));
+    if (!unlock.ok) throw new Error(result.error || 'The notes could not be unlocked.');
+    const response = await fetch('/api/private-section/messages');
+    if (!response.ok) throw new Error('The private notes could not be loaded.');
+    renderPrivateMessages(await response.json());
+    privateUnlockForm.hidden = true;
+    privateUnlockStatus.textContent = '';
+  } catch (error) {
+    privateUnlockStatus.textContent = error.message;
+  }
+});
 
 visitorMessageForm.addEventListener('submit', async event => {
   event.preventDefault();

@@ -57,9 +57,19 @@ function renderMessages() {
       <article class="admin-message">
         <div><span class="message-badge ${message.status}">${message.status}</span><small>${escapeHtml(message.name || 'Anonymous')} · ${escapeHtml(message.created_at)}</small></div>
         <p>${escapeHtml(message.message)}</p>
+        <label>Where should this appear?
+          <select data-field="private-section" data-id="${message.id}">
+            <option value="0" ${message.private_section ? '' : 'selected'}>Public notes</option>
+            <option value="1" ${message.private_section ? 'selected' : ''}>Love from Kind People</option>
+          </select>
+        </label>
+        <label>Reply (optional)
+          <textarea data-field="reply" data-id="${message.id}" maxlength="500" placeholder="Write a reply from Zohaib...">${escapeHtml(message.reply || '')}</textarea>
+        </label>
         <div class="message-actions">
           ${message.status !== 'approved' ? '<button class="small-button" data-action="approve-message" data-id="' + message.id + '">Approve</button>' : ''}
           ${message.status !== 'rejected' ? '<button class="small-button secondary" data-action="reject-message" data-id="' + message.id + '">Reject</button>' : ''}
+          <button class="small-button secondary" data-action="save-message" data-id="${message.id}">Save note</button>
           <button class="small-button danger" data-action="delete-message" data-id="${message.id}">Delete</button>
         </div>
       </article>`).join('')
@@ -274,11 +284,42 @@ document.querySelector('#messages').addEventListener('click', async event => {
     if (button.dataset.action === 'delete-message' && !confirm('Delete this message?')) return;
     if (button.dataset.action === 'delete-message') {
       await request(`/api/admin/messages/${button.dataset.id}`, { method: 'DELETE' });
-    } else {
-      const nextStatus = button.dataset.action === 'approve-message' ? 'approved' : 'rejected';
+    } else if (button.dataset.action === 'save-message') {
+      const card = button.closest('.admin-message');
       await request(`/api/admin/messages/${button.dataset.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ status: nextStatus })
+        body: JSON.stringify({
+          status: messages.find(message => String(message.id) === button.dataset.id).status,
+          privateSection: card.querySelector('[data-field="private-section"]').value === '1',
+          reply: card.querySelector('[data-field="reply"]').value
+        })
+      });
+    } else {
+      const nextStatus = button.dataset.action === 'approve-message' ? 'approved' : 'rejected';
+      const card = button.closest('.admin-message');
+      await request(`/api/admin/messages/${button.dataset.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: nextStatus,
+          privateSection: card.querySelector('[data-field="private-section"]').value === '1',
+          reply: card.querySelector('[data-field="reply"]').value
+        })
+      });
+      document.querySelector('#private-password-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const passwordStatus = document.querySelector('#private-password-status');
+        try {
+          await request('/api/admin/private-section/password', {
+            method: 'PUT',
+            body: JSON.stringify({ password: document.querySelector('#private-section-password').value })
+          });
+          event.target.reset();
+          passwordStatus.textContent = 'Private section password saved.';
+          showStatus('Private section password updated.');
+        } catch (error) {
+          passwordStatus.textContent = error.message;
+          passwordStatus.className = 'status error';
+        }
       });
     }
     await loadData();

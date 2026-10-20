@@ -10,6 +10,8 @@ const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
 const sessions = new Map();
 const messageSubmissionTimes = new Map();
+const privateAccessSessions = new Map();
+const privateUnlockAttempts = new Map();
 
 if (!adminPassword || !sessionSecret) {
   throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
@@ -70,9 +72,69 @@ app.get('/api/messages', (req, res) => {
   res.json(db.prepare(`
     SELECT id, name, message, created_at
     FROM visitor_messages
-    WHERE status = 'approved'
+    WHERE status = 'approved' AND private_section = 0
     ORDER BY created_at DESC, id DESC
     LIMIT 12
+  `).all());
+});
+
+function hashPrivatePassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPrivatePassword(password, storedHash) {
+  const [salt, expectedHex] = String(storedHash || '').split(':');
+  if (!salt || !expectedHex) return false;
+  const actual = crypto.scryptSync(password, salt, 64);
+  const expected = Buffer.from(expectedHex, 'hex');
+  return expected.length === actual.length && crypto.timingSafeEqual(actual, expected);
+}
+
+function privatePasswordHash() {
+  return db.prepare("SELECT value FROM settings WHERE key = 'private_section_password_hash'").get()?.value || '';
+}
+
+function hasPrivateAccess(req) {
+  const token = req.headers.cookie?.match(/(?:^|;\s*)ayesha_private=([^;]+)/)?.[1];
+  const expiresAt = token && privateAccessSessions.get(token);
+  if (!expiresAt || expiresAt < Date.now()) {
+    if (token) privateAccessSessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+app.post('/api/private-section/unlock', (req, res) => {
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const ip = req.get('CF-Connecting-IP') || req.ip || 'unknown';
+  const now = Date.now();
+  const attempt = privateUnlockAttempts.get(ip) || { count: 0, startedAt: now };
+  if (now - attempt.startedAt >= 60 * 1000) {
+    attempt.count = 0;
+    attempt.startedAt = now;
+  }
+  if (attempt.count >= 5) return res.status(429).json({ error: 'Too many attempts. Please try again in a minute.' });
+  attempt.count += 1;
+  privateUnlockAttempts.set(ip, attempt);
+  if (!verifyPrivatePassword(password, privatePasswordHash())) {
+    return res.status(401).json({ error: 'That password is not correct.' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  privateAccessSessions.set(token, now + 30 * 60 * 1000);
+  res.setHeader('Set-Cookie', `ayesha_private=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=1800`);
+  res.json({ ok: true });
+});
+
+app.get('/api/private-section/messages', (req, res) => {
+  if (!hasPrivateAccess(req)) return res.status(401).json({ error: 'Private section access is required.' });
+  res.json(db.prepare(`
+    SELECT id, name, message, reply, created_at
+    FROM visitor_messages
+    WHERE status = 'approved' AND private_section = 1
+    ORDER BY created_at DESC, id DESC
+    LIMIT 50
   `).all());
 });
 
@@ -189,7 +251,8 @@ app.get('/api/admin/settings', requireAdmin, (req, res) => {
   res.json({
     enabled: settings.main_quote_enabled === '1',
     delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
-    frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session'
+    frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session',
+    privatePasswordConfigured: Boolean(privatePasswordHash())
   });
 
 });
@@ -213,13 +276,29 @@ app.put('/api/admin/settings', requireAdmin, (req, res) => {
     save.run('main_quote_delay', String(delay));
     save.run('main_quote_frequency', frequency);
   });
+
   update();
   res.json({ ok: true });
 });
 
+app.put('/api/admin/private-section/password', requireAdmin, (req, res) => {
+  try {
+    const password = cleanText(req.body?.password, 'Private section password', { maxLength: 200 });
+    if (password.length < 4) throw new Error('Private section password must be at least 4 characters.');
+    db.prepare(`
+      INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run('private_section_password_hash', hashPrivatePassword(password));
+    privateAccessSessions.clear();
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/api/admin/messages', requireAdmin, (req, res) => {
   res.json(db.prepare(`
-    SELECT id, name, message, status, created_at, reviewed_at
+    SELECT id, name, message, status, private_section, reply, created_at, reviewed_at
     FROM visitor_messages
     ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC, id DESC
   `).all());
@@ -230,11 +309,24 @@ app.put('/api/admin/messages/:id', requireAdmin, (req, res) => {
   if (!['pending', 'approved', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'Message status is invalid.' });
   }
+  const privateSection = req.body?.privateSection === undefined ? null : (req.body.privateSection ? 1 : 0);
+  const replyProvided = req.body?.reply !== undefined;
+  let reply = null;
+  if (replyProvided) {
+    try {
+      reply = cleanText(req.body.reply, 'Reply', { required: false, maxLength: 500 });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  }
   const result = db.prepare(`
     UPDATE visitor_messages
-    SET status = ?, reviewed_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+    SET status = ?,
+      private_section = COALESCE(?, private_section),
+    reply = CASE WHEN ? = 1 THEN ? ELSE reply END,
+      reviewed_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
     WHERE id = ?
-  `).run(status, status, Number(req.params.id));
+  `).run(status, privateSection, replyProvided ? 1 : 0, reply, status, Number(req.params.id));
   if (!result.changes) return res.status(404).json({ error: 'Message not found.' });
   res.json({ ok: true });
 });

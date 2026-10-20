@@ -73,6 +73,12 @@
         </form>
         <div class="approved-messages" id="approved-messages"></div>
       </section>
+      <section class="private-notes" id="kind-people" aria-labelledby="private-notes-title">
+        <p class="eyebrow"><span></span> a protected little corner</p>
+        <h2 id="private-notes-title">Love from<br /><em>kind people.</em></h2>
+        <p>Some notes are kept in a private place, just for the people Zohaib chooses to share them with.</p>
+        <button class="primary-btn" id="open-private-notes" type="button">Open this little corner <span>→</span></button>
+      </section>
     </main>
 
     <footer>
@@ -88,6 +94,20 @@
         <h3 id="modal-title">Here is a little something.</h3>
         <p id="modal-message"></p>
         <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
+      </div>
+    </div>
+    <div class="modal" id="private-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="private-modal-title">
+      <div class="modal-card">
+        <button class="close" id="close-private-modal" type="button" aria-label="Close private notes">×</button>
+        <span class="modal-star">✦</span>
+        <p class="modal-label">a private little corner</p>
+        <h3 id="private-modal-title">Love from kind people.</h3>
+        <form id="private-unlock-form">
+          <label>Password <input id="private-password" type="password" autocomplete="current-password" required /></label>
+          <button class="primary-btn" type="submit">Unlock notes <span>→</span></button>
+          <p class="visitor-message-status" id="private-unlock-status" role="status"></p>
+        </form>
+        <div class="private-message-list" id="private-message-list" hidden></div>
       </div>
     </div>
     <section class="insights" id="insights" hidden aria-labelledby="insights-title">
