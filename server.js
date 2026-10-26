@@ -519,6 +519,39 @@ app.put('/api/admin/announcement', requireAdmin, (req, res) => {
   }
 });
 
+// ---- Sleepy bunny: a little companion on the flower arch; the admin sets what it says when tapped. ----
+
+function readBunny() {
+  let lines = [];
+  try {
+    lines = JSON.parse(readSetting('bunny_lines') || '[]');
+  } catch (error) {
+    lines = [];
+  }
+  return { enabled: readSetting('bunny_enabled') === '1', lines: Array.isArray(lines) ? lines.filter(line => typeof line === 'string') : [] };
+}
+
+app.get('/api/bunny', (req, res) => {
+  res.json(readBunny());
+});
+
+app.get('/api/admin/bunny', requireAdmin, (req, res) => {
+  res.json(readBunny());
+});
+
+app.put('/api/admin/bunny', requireAdmin, (req, res) => {
+  const enabled = Boolean(req.body?.enabled);
+  const lines = (Array.isArray(req.body?.lines) ? req.body.lines : [])
+    .map(line => (typeof line === 'string' ? line.trim() : ''))
+    .filter(Boolean);
+  if (enabled && !lines.length) return res.status(400).json({ error: 'Give the bunny at least one thing to say.' });
+  if (lines.length > 12) return res.status(400).json({ error: 'The bunny can have up to 12 lines.' });
+  if (lines.some(line => line.length > 60)) return res.status(400).json({ error: 'Each line can be up to 60 characters.' });
+  saveSetting.run('bunny_enabled', enabled ? '1' : '0');
+  saveSetting.run('bunny_lines', JSON.stringify(lines));
+  res.json({ ok: true });
+});
+
 const popupQuoteQuery = `
   SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
   FROM quotes q

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css?v=announcement" />
+    <link rel="stylesheet" href="/admin/admin.css?v=bunny" />
   </head>
   <body>
     <main>
@@ -74,6 +74,17 @@
                 <button class="button secondary" type="submit" data-mode="edit">Save small edit</button>
               </div>
               <p class="setting-hint wide"><strong>Publish as new</strong> shows it again to everyone, even if they closed the last one. <strong>Save small edit</strong> is for fixing a typo, so it won't pop back up for her.</p>
+            </form>
+          </section>
+          <section class="panel">
+            <div class="section-header"><h2>Sleepy bunny</h2></div>
+            <p class="setting-hint">The little bunny on the flower arch. When she taps it, it hops and says one of these. At night it's asleep and mumbles sleepy things instead.</p>
+            <form class="settings-form bunny-form" id="bunny-form">
+              <label class="checkbox wide"><input id="bunny-enabled" type="checkbox" /> Show the bunny</label>
+              <label class="wide">Things it says, one per line (up to 12, each up to 60 characters)
+                <textarea id="bunny-lines" rows="6"></textarea>
+              </label>
+              <button class="button" type="submit">Save bunny</button>
             </form>
           </section>
           <section class="panel">
@@ -183,6 +194,6 @@
       </div>
     </div>
     <script src="/voice-kit.js?v=voice-notes"></script>
-    <script src="/admin/admin.js?v=announcement"></script>
+    <script src="/admin/admin.js?v=bunny"></script>
   </body>
 </html>

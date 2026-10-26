@@ -323,6 +323,47 @@ renderTheme(window.ayeshaTheme.current());
 // Follow the clock while the page stays open, e.g. turn to night at 7pm.
 window.setInterval(() => renderTheme(window.ayeshaTheme.apply()), 60 * 1000);
 
+// ---- Sleepy bunny: its pose follows the day/night theme in CSS; tapping it hops and says something sweet. ----
+const bunny = document.querySelector('#bunny');
+const bunnyBubble = document.querySelector('#bunny-bubble');
+const sleepyBunnyLines = ['zzz…', 'five more minutes…', 'sweet dreams, ayesha ♡', 'shh… dreaming'];
+let bunnyLines = [];
+let lastBunnyLine = '';
+let bunnyBubbleTimer = null;
+
+// Removing and re-adding a class restarts its animation, so every tap gets a fresh hop.
+function replayClass(element, className) {
+  element.classList.remove(className);
+  void element.getBoundingClientRect();
+  element.classList.add(className);
+}
+
+function nextBunnyLine() {
+  const lines = document.documentElement.dataset.theme === 'night' ? sleepyBunnyLines : bunnyLines;
+  const choices = lines.length > 1 ? lines.filter(line => line !== lastBunnyLine) : lines;
+  lastBunnyLine = choices[Math.floor(Math.random() * choices.length)];
+  return lastBunnyLine;
+}
+
+bunny.addEventListener('click', () => {
+  replayClass(bunny, 'hop');
+  bunnyBubble.textContent = nextBunnyLine();
+  bunnyBubble.hidden = false;
+  replayClass(bunnyBubble, 'pop');
+  window.clearTimeout(bunnyBubbleTimer);
+  bunnyBubbleTimer = window.setTimeout(() => { bunnyBubble.hidden = true; }, 2800);
+});
+
+fetch('/api/bunny').then(response => (response.ok ? response.json() : null)).then(settings => {
+  if (!settings?.enabled || !settings.lines.length) return;
+  bunnyLines = settings.lines;
+  bunny.hidden = false;
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12 && document.documentElement.dataset.theme !== 'night') {
+    window.setTimeout(() => replayClass(bunny, 'waving'), 900);
+  }
+}).catch(error => console.warn('Unable to load the bunny.', error));
+
 if (new URLSearchParams(window.location.search).has('insights')) {
   const insights = document.querySelector('#insights');
   insights.hidden = false;

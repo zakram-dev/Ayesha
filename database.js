@@ -183,6 +183,14 @@ db.prepare(`
   ON CONFLICT(key) DO NOTHING
 `).run();
 
+// The sleepy bunny is on by default with a few things to say when tapped.
+db.prepare(`
+  INSERT INTO settings (key, value)
+  VALUES ('bunny_enabled', '1'),
+    ('bunny_lines', '["hi ayesha ♡","you''re doing great","boop!","have you had water today?","proud of you, always","you look lovely today"]')
+  ON CONFLICT(key) DO NOTHING
+`).run();
+
 // The announcement bar starts switched off, with a suggested first message ready in admin.
 db.prepare(`
   INSERT INTO settings (key, value)

@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=announcement" />
+    <link rel="stylesheet" href="styles.css?v=bunny" />
   </head>
   <body>
     <div class="announcement" id="announcement" role="region" aria-label="What's new" hidden>
@@ -52,6 +52,27 @@
           <div class="ribbon ribbon-one"></div>
           <div class="ribbon ribbon-two"></div>
           <p class="art-note" id="art-note">some things are<br /><em>lovely</em> just because</p>
+          <p class="bunny-bubble" id="bunny-bubble" role="status" aria-live="polite" hidden></p>
+          <button class="bunny" id="bunny" type="button" aria-label="Say hi to the bunny" hidden>
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <ellipse class="bunny-shadow" cx="60" cy="113" rx="31" ry="5" />
+              <g class="bunny-body">
+                <circle class="bunny-fur" cx="90" cy="103" r="7.5" />
+                <g class="bunny-ear bunny-ear-left"><ellipse class="bunny-fur" cx="49" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="49" cy="30" rx="3.5" ry="14" /></g>
+                <g class="bunny-ear bunny-ear-right"><ellipse class="bunny-fur" cx="71" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="71" cy="30" rx="3.5" ry="14" /></g>
+                <ellipse class="bunny-fur" cx="60" cy="93" rx="29" ry="21" />
+                <circle class="bunny-fur" cx="60" cy="62" r="22" />
+                <g class="bunny-eyes-open"><ellipse cx="52" cy="61" rx="2.4" ry="3" /><ellipse cx="68" cy="61" rx="2.4" ry="3" /></g>
+                <g class="bunny-eyes-closed"><path d="M48.5 60.5q3.5 3.2 7 0" /><path d="M64.5 60.5q3.5 3.2 7 0" /></g>
+                <circle class="bunny-cheek" cx="46" cy="68" r="4" /><circle class="bunny-cheek" cx="74" cy="68" r="4" />
+                <ellipse class="bunny-nose" cx="60" cy="66.5" rx="2.2" ry="1.6" />
+                <path class="bunny-mouth" d="M57 69.5q1.5 2 3 0q1.5 2 3 0" />
+                <ellipse class="bunny-fur" cx="50" cy="110" rx="7" ry="4.5" />
+                <g class="bunny-wave-paw"><ellipse class="bunny-fur" cx="70" cy="110" rx="7" ry="4.5" /></g>
+              </g>
+              <g class="bunny-zzz"><text x="56" y="34">z</text><text x="63" y="22">z</text><text x="70" y="10">z</text></g>
+            </svg>
+          </button>
         </div>
       </section>
 
@@ -124,7 +145,7 @@
       </div>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
-    <script src="script.js?v=announcement"></script>
+    <script src="script.js?v=bunny"></script>
     <script src="voice-kit.js?v=voice-notes"></script>
     <script src="voice-notes.js?v=mailbox"></script>
   </body>

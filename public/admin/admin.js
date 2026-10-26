@@ -230,11 +230,14 @@ document.querySelector('#voice-password-form').addEventListener('submit', async 
 document.querySelector('#voice-refresh').addEventListener('click', loadVoiceThread);
 
 async function loadData() {
-  const [dashboard, settings, loadedCategories, loadedQuotes, announcement] = await Promise.all([
+  const [dashboard, settings, loadedCategories, loadedQuotes, announcement, bunny] = await Promise.all([
     request('/api/admin/dashboard'), request('/api/admin/settings'),
-    request('/api/admin/categories'), request('/api/admin/quotes'), request('/api/admin/announcement')
+    request('/api/admin/categories'), request('/api/admin/quotes'), request('/api/admin/announcement'),
+    request('/api/admin/bunny')
   ]);
   renderAnnouncement(announcement);
+  document.querySelector('#bunny-enabled').checked = bunny.enabled;
+  document.querySelector('#bunny-lines').value = bunny.lines.join('\n');
   categories = loadedCategories;
   quotes = loadedQuotes;
   popupSettings = settings;
@@ -447,6 +450,19 @@ document.querySelector('#announcement-form').addEventListener('submit', async ev
     if (!enabled) showStatus('Saved. The announcement bar is hidden.');
     else if (asNew) showStatus('Published. She will see it on her next visit ✦');
     else showStatus('Saved. Anyone who already closed it will not see it again.');
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+});
+document.querySelector('#bunny-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    await request('/api/admin/bunny', { method: 'PUT', body: JSON.stringify({
+      enabled: document.querySelector('#bunny-enabled').checked,
+      lines: document.querySelector('#bunny-lines').value.split('\n')
+    }) });
+    await loadData();
+    showStatus('Bunny saved ✦');
   } catch (error) {
     showStatus(error.message, true);
   }
