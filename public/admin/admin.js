@@ -71,6 +71,26 @@ function renderPopupSettings() {
   document.querySelector('#popup-mode-hint').textContent = hint;
 }
 
+function renderAnnouncementLinkFields() {
+  const linkType = document.querySelector('#announcement-link-type').value;
+  document.querySelector('[data-announcement-link="label"]').hidden = linkType === 'none';
+  document.querySelector('[data-announcement-link="url"]').hidden = linkType !== 'link';
+}
+
+function renderAnnouncement(announcement) {
+  document.querySelector('#announcement-enabled').checked = announcement.enabled;
+  document.querySelector('#announcement-text').value = announcement.text;
+  document.querySelector('#announcement-link-type').value = announcement.linkType;
+  document.querySelector('#announcement-link-label').value = announcement.linkLabel;
+  document.querySelector('#announcement-link-url').value = announcement.linkUrl;
+  document.querySelector('#announcement-until').value = announcement.until;
+  const ended = announcement.until && announcement.until < new Date().toLocaleDateString('en-CA');
+  const state = document.querySelector('#announcement-state');
+  state.textContent = !announcement.enabled ? 'Hidden' : ended ? `Ended on ${announcement.until}` : 'Showing now';
+  state.className = `announcement-state${announcement.enabled && !ended ? ' live' : ''}`;
+  renderAnnouncementLinkFields();
+}
+
 function renderPinUntilField() {
   document.querySelector('#quote-pin-until-label').hidden = !document.querySelector('#quote-main').checked;
 }
@@ -210,10 +230,11 @@ document.querySelector('#voice-password-form').addEventListener('submit', async 
 document.querySelector('#voice-refresh').addEventListener('click', loadVoiceThread);
 
 async function loadData() {
-  const [dashboard, settings, loadedCategories, loadedQuotes] = await Promise.all([
+  const [dashboard, settings, loadedCategories, loadedQuotes, announcement] = await Promise.all([
     request('/api/admin/dashboard'), request('/api/admin/settings'),
-    request('/api/admin/categories'), request('/api/admin/quotes')
+    request('/api/admin/categories'), request('/api/admin/quotes'), request('/api/admin/announcement')
   ]);
+  renderAnnouncement(announcement);
   categories = loadedCategories;
   quotes = loadedQuotes;
   popupSettings = settings;
@@ -406,6 +427,29 @@ document.querySelector('#category-cancel').addEventListener('click', () => {
   document.querySelector('#category-form').reset();
   document.querySelector('#category-submit').textContent = 'Add category';
   document.querySelector('#category-cancel').hidden = true;
+});
+document.querySelector('#announcement-link-type').addEventListener('change', renderAnnouncementLinkFields);
+document.querySelector('#announcement-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const asNew = event.submitter?.dataset.mode === 'new';
+  const enabled = document.querySelector('#announcement-enabled').checked;
+  try {
+    await request('/api/admin/announcement', { method: 'PUT', body: JSON.stringify({
+      enabled,
+      asNew,
+      text: document.querySelector('#announcement-text').value,
+      linkType: document.querySelector('#announcement-link-type').value,
+      linkLabel: document.querySelector('#announcement-link-label').value,
+      linkUrl: document.querySelector('#announcement-link-url').value,
+      until: document.querySelector('#announcement-until').value
+    }) });
+    await loadData();
+    if (!enabled) showStatus('Saved. The announcement bar is hidden.');
+    else if (asNew) showStatus('Published. She will see it on her next visit ✦');
+    else showStatus('Saved. Anyone who already closed it will not see it again.');
+  } catch (error) {
+    showStatus(error.message, true);
+  }
 });
 document.querySelector('#quote-cancel').addEventListener('click', resetQuoteForm);
 document.querySelector('#quote-main').addEventListener('change', renderPinUntilField);

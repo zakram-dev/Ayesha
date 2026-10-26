@@ -457,6 +457,68 @@ app.get('/api/quotes/random', (req, res) => {
   });
 });
 
+// ---- Announcement bar: one short message across the top of the site, managed in admin. ----
+// Each published announcement has a version; the visitor's browser remembers the version they closed.
+
+const announcementKeys = ['announcement_enabled', 'announcement_version', 'announcement_text', 'announcement_link_type', 'announcement_link_label', 'announcement_link_url', 'announcement_until'];
+
+function readAnnouncement() {
+  const settings = db.prepare(`SELECT key, value FROM settings WHERE key IN (${announcementKeys.map(() => '?').join(',')})`)
+    .all(...announcementKeys)
+    .reduce((result, setting) => ({ ...result, [setting.key]: setting.value }), {});
+  return {
+    enabled: settings.announcement_enabled === '1',
+    version: Number(settings.announcement_version) || 0,
+    text: settings.announcement_text || '',
+    linkType: ['mailbox', 'link'].includes(settings.announcement_link_type) ? settings.announcement_link_type : 'none',
+    linkLabel: settings.announcement_link_label || '',
+    linkUrl: settings.announcement_link_url || '',
+    until: isoDate.test(settings.announcement_until || '') ? settings.announcement_until : ''
+  };
+}
+
+app.get('/api/announcement', (req, res) => {
+  const announcement = readAnnouncement();
+  const today = isoDate.test(req.query.today || '') ? req.query.today : new Date().toISOString().slice(0, 10);
+  if (!announcement.enabled || !announcement.text || (announcement.until && today > announcement.until)) return res.status(204).end();
+  res.json({
+    version: announcement.version,
+    text: announcement.text,
+    link: announcement.linkType === 'none' ? null : { type: announcement.linkType, label: announcement.linkLabel, url: announcement.linkUrl }
+  });
+});
+
+app.get('/api/admin/announcement', requireAdmin, (req, res) => {
+  res.json(readAnnouncement());
+});
+
+// "Publish as new" bumps the version so everyone sees it again; "small edit" keeps it, so a typo fix doesn't reappear.
+app.put('/api/admin/announcement', requireAdmin, (req, res) => {
+  try {
+    const current = readAnnouncement();
+    const enabled = Boolean(req.body?.enabled);
+    const text = cleanText(req.body?.text ?? '', 'Message', { required: enabled, maxLength: 200 }) || '';
+    const linkType = ['none', 'mailbox', 'link'].includes(req.body?.linkType) ? req.body.linkType : 'none';
+    const linkLabel = linkType === 'none' ? '' : cleanText(req.body?.linkLabel, 'Button text', { maxLength: 40 });
+    const linkUrl = linkType === 'link' ? cleanText(req.body?.linkUrl, 'Link', { maxLength: 300 }) : '';
+    if (linkUrl && !/^(https?:\/\/|\/|#)/i.test(linkUrl)) throw new Error('Links must start with https://, / or #.');
+    const until = readPinnedUntil(req.body?.until);
+    const version = req.body?.asNew || !current.version ? current.version + 1 : current.version;
+    db.transaction(() => {
+      saveSetting.run('announcement_enabled', enabled ? '1' : '0');
+      saveSetting.run('announcement_version', String(version));
+      saveSetting.run('announcement_text', text);
+      saveSetting.run('announcement_link_type', linkType);
+      saveSetting.run('announcement_link_label', linkLabel);
+      saveSetting.run('announcement_link_url', linkUrl);
+      saveSetting.run('announcement_until', until);
+    })();
+    res.json({ ok: true, version });
+  } catch (error) {
+    res.status(400).json({ error: error.message.replace('Pinned-until', 'Show until') });
+  }
+});
+
 const popupQuoteQuery = `
   SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
   FROM quotes q

@@ -9,10 +9,7 @@ let activeQuote = null;
 const analyticsKey = 'ayesha-gift-insights';
 const recentQuotesKey = 'ayesha-recent-quotes';
 const analyticsSessionKey = 'ayesha-analytics-session';
-// Bumped for the mailbox, so she sees the announcement once more even if she saw the old one.
-const featureAnnouncementKey = 'ayesha-feature-announcement-v2';
 const popupSeenKey = 'ayesha-popup-seen';
-let featureAnnouncementActive = false;
 function getAnalyticsSessionId() {
   let sessionId = sessionStorage.getItem(analyticsSessionKey);
   if (!sessionId) {
@@ -190,35 +187,14 @@ async function showMainQuote() {
   }
 }
 
-function showFeatureAnnouncement() {
-  featureAnnouncementActive = true;
-  label.textContent = 'new on this little corner';
-  title.textContent = 'Our little mailbox.';
-  text.textContent = 'You can now send me a voice note or a little message, and I can send one back. Only you and I can open it.';
-  document.querySelector('#another-note').textContent = 'open our mailbox →';
-  modal.classList.add('is-open');
-  modal.setAttribute('aria-hidden', 'false');
-  localStorage.setItem(featureAnnouncementKey, 'seen');
-}
-
 document.querySelector('#open-note').addEventListener('click', () => { recordEvent('click', { target: 'open-note' }); showMessage(); });
 document.querySelector('#random-note').addEventListener('click', () => { recordEvent('click', { target: 'random-note' }); showMessage(); });
 document.querySelector('#distract-me').addEventListener('click', () => { recordEvent('click', { target: 'distraction' }); showMessage('distract'); });
-document.querySelector('#another-note').addEventListener('click', () => {
-  if (featureAnnouncementActive) {
-    closeModal();
-    document.querySelector('#voice-notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    document.querySelector('#open-voice-notes').click();
-    return;
-  }
-  showMessage(activeMood);
-});
+document.querySelector('#another-note').addEventListener('click', () => showMessage(activeMood));
 document.querySelector('#close-modal').addEventListener('click', closeModal);
 modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
 function closeModal() {
-  featureAnnouncementActive = false;
-  document.querySelector('#another-note').textContent = 'one more note →';
   modal.classList.remove('is-open');
   modal.setAttribute('aria-hidden', 'true');
 }
@@ -234,9 +210,7 @@ function shouldShowMainQuote(frequency) {
   return !sessionStorage.getItem('mainQuoteShown');
 }
 
-if (!localStorage.getItem(featureAnnouncementKey)) {
-  showFeatureAnnouncement();
-} else if (!sessionStorage.getItem('mainQuoteChecked')) {
+if (!sessionStorage.getItem('mainQuoteChecked')) {
   showMainQuote();
   sessionStorage.setItem('mainQuoteChecked', 'true');
 }
@@ -251,6 +225,57 @@ function renderInsights() {
   document.querySelector('#total-interactions').textContent = events.length;
   document.querySelector('#top-mood').textContent = favoriteMood;
 }
+
+// ---- Announcement bar: set in admin; closing it remembers that version so it stays hidden until a new one is published. ----
+const announcementBar = document.querySelector('#announcement');
+const announcementClosedKey = 'ayesha-announcement-closed';
+
+function closedAnnouncementVersion() {
+  try {
+    return Number(localStorage.getItem(announcementClosedKey)) || 0;
+  } catch (error) {
+    return 0;
+  }
+}
+
+async function showAnnouncement() {
+  try {
+    const response = await fetch(`/api/announcement?today=${new Date().toLocaleDateString('en-CA')}`);
+    if (response.status !== 200) return;
+    const announcement = await response.json();
+    if (announcement.version === closedAnnouncementVersion()) return;
+    document.querySelector('#announcement-text').textContent = announcement.text;
+    const action = document.querySelector('#announcement-action');
+    action.hidden = !announcement.link;
+    if (announcement.link) {
+      action.textContent = `${announcement.link.label} →`;
+      action.href = announcement.link.type === 'mailbox' ? '#voice-notes' : announcement.link.url;
+      action.target = /^https?:/i.test(action.getAttribute('href')) ? '_blank' : '';
+      action.rel = action.target ? 'noopener' : '';
+      action.onclick = announcement.link.type === 'mailbox'
+        ? event => { event.preventDefault(); document.querySelector('#open-voice-notes').click(); }
+        : null;
+    }
+    announcementBar.dataset.version = announcement.version;
+    announcementBar.hidden = false;
+  } catch (error) {
+    console.warn('Unable to load the announcement.', error);
+  }
+}
+
+document.querySelector('#announcement-close').addEventListener('click', () => {
+  try {
+    localStorage.setItem(announcementClosedKey, announcementBar.dataset.version);
+  } catch (error) {
+    // Without storage it simply shows again next visit.
+  }
+  announcementBar.classList.add('is-closing');
+  const hide = () => { announcementBar.hidden = true; announcementBar.classList.remove('is-closing'); };
+  if (reducedMotion.matches) hide();
+  else announcementBar.addEventListener('animationend', hide, { once: true });
+});
+
+showAnnouncement();
 
 const themeToggle = document.querySelector('#theme-toggle');
 const greeting = document.querySelector('#greeting');

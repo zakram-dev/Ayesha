@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css?v=mailbox" />
+    <link rel="stylesheet" href="/admin/admin.css?v=announcement" />
   </head>
   <body>
     <main>
@@ -53,6 +53,29 @@
         </div>
 
         <div class="tab-panel" data-panel="settings">
+          <section class="panel">
+            <div class="section-header"><h2>Announcement bar</h2><span class="announcement-state" id="announcement-state"></span></div>
+            <p class="setting-hint">A short message across the very top of the site. When she closes it, it stays closed until you publish a new one.</p>
+            <form class="settings-form announcement-form" id="announcement-form">
+              <label class="checkbox wide"><input id="announcement-enabled" type="checkbox" /> Show the announcement bar</label>
+              <label class="wide">Message <input id="announcement-text" maxlength="200" placeholder="✦ New: …" /></label>
+              <label>Button
+                <select id="announcement-link-type">
+                  <option value="none">No button</option>
+                  <option value="mailbox">Open our mailbox</option>
+                  <option value="link">Go to a link</option>
+                </select>
+              </label>
+              <label data-announcement-link="label">Button text <input id="announcement-link-label" maxlength="40" /></label>
+              <label data-announcement-link="url">Link <input id="announcement-link-url" maxlength="300" placeholder="/#notes or https://…" /></label>
+              <label>Show until (optional) <input id="announcement-until" type="date" /></label>
+              <div class="wide announcement-buttons">
+                <button class="button" type="submit" data-mode="new">Publish as new</button>
+                <button class="button secondary" type="submit" data-mode="edit">Save small edit</button>
+              </div>
+              <p class="setting-hint wide"><strong>Publish as new</strong> shows it again to everyone, even if they closed the last one. <strong>Save small edit</strong> is for fixing a typo, so it won't pop back up for her.</p>
+            </form>
+          </section>
           <section class="panel">
             <div class="section-header"><h2>Main quote popup</h2></div>
             <form class="settings-form popup-settings-form" id="settings-form">
@@ -160,6 +183,6 @@
       </div>
     </div>
     <script src="/voice-kit.js?v=voice-notes"></script>
-    <script src="/admin/admin.js?v=mailbox"></script>
+    <script src="/admin/admin.js?v=announcement"></script>
   </body>
 </html>

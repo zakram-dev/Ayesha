@@ -183,6 +183,16 @@ db.prepare(`
   ON CONFLICT(key) DO NOTHING
 `).run();
 
+// The announcement bar starts switched off, with a suggested first message ready in admin.
+db.prepare(`
+  INSERT INTO settings (key, value)
+  VALUES ('announcement_enabled', '0'), ('announcement_version', '0'),
+    ('announcement_text', '✦ New: send me voice notes and little messages in our little mailbox.'),
+    ('announcement_link_type', 'mailbox'), ('announcement_link_label', 'Open our mailbox'),
+    ('announcement_link_url', ''), ('announcement_until', '')
+  ON CONFLICT(key) DO NOTHING
+`).run();
+
 db.prepare(`
   INSERT INTO settings (key, value)
   SELECT 'main_quote_pool_category', CAST(id AS TEXT) FROM categories WHERE slug = 'welcome'
