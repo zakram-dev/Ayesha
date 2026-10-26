@@ -189,4 +189,24 @@ db.prepare(`
   ON CONFLICT(key) DO NOTHING
 `).run();
 
+// One-time move into "Our little mailbox": approved notes from the old "Love from kind people" corner,
+// and Zohaib's replies to them, become mailbox messages with their original dates. Runs once.
+const moveKindNotesToMailbox = db.transaction(() => {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'kind_notes_moved'").get()) return;
+  const notes = db.prepare(`
+    SELECT message, reply, created_at, reviewed_at FROM visitor_messages
+    WHERE status = 'approved' AND private_section = 1
+    ORDER BY created_at, id
+  `).all();
+  const addMessage = db.prepare("INSERT INTO voice_messages (sender, kind, body, created_at, read_at) VALUES (?, 'text', ?, ?, ?)");
+  notes.forEach(note => {
+    addMessage.run('ayesha', note.message, note.created_at, note.created_at);
+    const repliedAt = note.reviewed_at || note.created_at;
+    if (note.reply) addMessage.run('zohaib', note.reply, repliedAt, repliedAt);
+  });
+  db.prepare("INSERT INTO settings (key, value) VALUES ('kind_notes_moved', ?)").run(String(notes.length));
+});
+
+moveKindNotesToMailbox();
+
 module.exports = db;

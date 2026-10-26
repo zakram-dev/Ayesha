@@ -3,19 +3,14 @@ const label = document.querySelector('#modal-label');
 const title = document.querySelector('#modal-title');
 const text = document.querySelector('#modal-message');
 const noteGrid = document.querySelector('.note-grid');
-const visitorMessageForm = document.querySelector('#visitor-message-form');
-const visitorMessageStatus = document.querySelector('#visitor-message-status');
-const privateModal = document.querySelector('#private-modal');
-const privateUnlockForm = document.querySelector('#private-unlock-form');
-const privateUnlockStatus = document.querySelector('#private-unlock-status');
-const privateMessageList = document.querySelector('#private-message-list');
 let activeMood = 'welcome';
 let activeQuote = null;
 
 const analyticsKey = 'ayesha-gift-insights';
 const recentQuotesKey = 'ayesha-recent-quotes';
 const analyticsSessionKey = 'ayesha-analytics-session';
-const featureAnnouncementKey = 'ayesha-feature-announcement-v1';
+// Bumped for the mailbox, so she sees the announcement once more even if she saw the old one.
+const featureAnnouncementKey = 'ayesha-feature-announcement-v2';
 const popupSeenKey = 'ayesha-popup-seen';
 let featureAnnouncementActive = false;
 function getAnalyticsSessionId() {
@@ -198,9 +193,9 @@ async function showMainQuote() {
 function showFeatureAnnouncement() {
   featureAnnouncementActive = true;
   label.textContent = 'new on this little corner';
-  title.textContent = 'Leave a little note for Zohaib.';
-  text.textContent = 'You can now send a custom note, compliment, or kind message to Zohaib. Write something sweet and it may appear in the notes from kind people after it is approved.';
-  document.querySelector('#another-note').textContent = 'send a little note →';
+  title.textContent = 'Our little mailbox.';
+  text.textContent = 'You can now send me a voice note or a little message, and I can send one back. Only you and I can open it.';
+  document.querySelector('#another-note').textContent = 'open our mailbox →';
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
   localStorage.setItem(featureAnnouncementKey, 'seen');
@@ -212,7 +207,8 @@ document.querySelector('#distract-me').addEventListener('click', () => { recordE
 document.querySelector('#another-note').addEventListener('click', () => {
   if (featureAnnouncementActive) {
     closeModal();
-    document.querySelector('#visitor-notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelector('#voice-notes').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelector('#open-voice-notes').click();
     return;
   }
   showMessage(activeMood);
@@ -226,93 +222,6 @@ function closeModal() {
   modal.classList.remove('is-open');
   modal.setAttribute('aria-hidden', 'true');
 }
-
-function renderApprovedMessages(messages) {
-  const container = document.querySelector('#approved-messages');
-  container.innerHTML = messages.length
-    ? `<h3>Notes from kind people</h3>${messages.map(item => `
-      <article class="approved-message">
-        <p>“${escapeHtml(item.message)}”</p>
-        <small>${escapeHtml(item.name)}</small>
-      </article>`).join('')}`
-    : '';
-}
-
-fetch('/api/messages').then(response => response.ok ? response.json() : []).then(renderApprovedMessages)
-  .catch(error => console.warn('Unable to load visitor messages.', error));
-
-function renderPrivateMessages(messages) {
-  privateMessageList.innerHTML = messages.length
-    ? messages.map(item => `
-      <article class="private-thread">
-        <div class="chat-bubble visitor-bubble">
-          <small>${escapeHtml(item.name)}</small>
-          <p>“${escapeHtml(item.message)}”</p>
-        </div>
-        ${item.reply ? `<div class="chat-bubble reply-bubble"><small>Zohaib's reply</small><p>${escapeHtml(item.reply)}</p></div>` : ''}
-      </article>`).join('')
-    : '<p>No notes have been added here yet.</p>';
-  privateMessageList.hidden = false;
-}
-
-document.querySelector('#open-private-notes').addEventListener('click', () => {
-  privateUnlockForm.hidden = false;
-  privateMessageList.hidden = true;
-  privateUnlockStatus.textContent = '';
-  document.querySelector('#private-password').value = '';
-  privateModal.classList.add('is-open');
-  privateModal.setAttribute('aria-hidden', 'false');
-});
-document.querySelector('#close-private-modal').addEventListener('click', () => {
-  privateModal.classList.remove('is-open');
-  privateModal.setAttribute('aria-hidden', 'true');
-});
-privateUnlockForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  privateUnlockStatus.textContent = 'Checking the password...';
-  try {
-    const unlock = await fetch('/api/private-section/unlock', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: document.querySelector('#private-password').value })
-    });
-    const result = await unlock.json().catch(() => ({}));
-    if (!unlock.ok) throw new Error(result.error || 'The notes could not be unlocked.');
-    const response = await fetch('/api/private-section/messages');
-    if (!response.ok) throw new Error('The private notes could not be loaded.');
-    renderPrivateMessages(await response.json());
-    privateUnlockForm.hidden = true;
-    privateUnlockStatus.textContent = '';
-  } catch (error) {
-    privateUnlockStatus.textContent = error.message;
-  }
-});
-
-visitorMessageForm.addEventListener('submit', async event => {
-  event.preventDefault();
-  const submitButton = visitorMessageForm.querySelector('button[type="submit"]');
-  submitButton.disabled = true;
-  visitorMessageStatus.textContent = 'Sending your note...';
-  try {
-    const response = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: document.querySelector('#visitor-name').value,
-        message: document.querySelector('#visitor-message').value,
-        website: document.querySelector('#visitor-website').value
-      })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'Your note could not be sent.');
-    visitorMessageForm.reset();
-    visitorMessageStatus.textContent = 'Your note was sent with love for review.';
-  } catch (error) {
-    visitorMessageStatus.textContent = error.message;
-  } finally {
-    submitButton.disabled = false;
-  }
-});
 
 fetchCategories().then(renderCategories).catch(error => {
   noteGrid.innerHTML = '<p class="notes-loading">The feelings are taking a tiny pause. Please try again soon.</p>';

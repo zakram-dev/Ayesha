@@ -4,7 +4,6 @@ const logoutButton = document.querySelector('#logout');
 const status = document.querySelector('#status');
 let categories = [];
 let quotes = [];
-let messages = [];
 let popupSettings = null;
 let editingQuoteId = null;
 let editingCategoryId = null;
@@ -48,33 +47,6 @@ function renderQuotes() {
 
 function renderCategories() {
   document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="add-quote" data-id="${category.id}">Add quote</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
-}
-
-function renderMessages() {
-  const filter = document.querySelector('#message-status-filter').value;
-  const visibleMessages = messages.filter(message => !filter || message.status === filter);
-  document.querySelector('#messages').innerHTML = visibleMessages.length
-    ? visibleMessages.map(message => `
-      <article class="admin-message">
-        <div><span class="message-badge ${message.status}">${message.status}</span><small>${escapeHtml(message.name || 'Anonymous')} · ${escapeHtml(message.created_at)}</small></div>
-        <p>${escapeHtml(message.message)}</p>
-        <label>Where should this appear?
-          <select data-field="private-section" data-id="${message.id}">
-            <option value="0" ${message.private_section ? '' : 'selected'}>Public notes</option>
-            <option value="1" ${message.private_section ? 'selected' : ''}>Love from Kind People</option>
-          </select>
-        </label>
-        <label>Reply (optional)
-          <textarea data-field="reply" data-id="${message.id}" maxlength="500" placeholder="Write a reply from Zohaib...">${escapeHtml(message.reply || '')}</textarea>
-        </label>
-        <div class="message-actions">
-          ${message.status !== 'approved' ? '<button class="small-button" data-action="approve-message" data-id="' + message.id + '">Approve</button>' : ''}
-          ${message.status !== 'rejected' ? '<button class="small-button secondary" data-action="reject-message" data-id="' + message.id + '">Reject</button>' : ''}
-          <button class="small-button secondary" data-action="save-message" data-id="${message.id}">Save note</button>
-          <button class="small-button danger" data-action="delete-message" data-id="${message.id}">Delete</button>
-        </div>
-      </article>`).join('')
-    : '<p class="empty-message">No messages in this view.</p>';
 }
 
 function renderPopupSettings() {
@@ -238,13 +210,12 @@ document.querySelector('#voice-password-form').addEventListener('submit', async 
 document.querySelector('#voice-refresh').addEventListener('click', loadVoiceThread);
 
 async function loadData() {
-  const [dashboard, settings, loadedCategories, loadedQuotes, loadedMessages] = await Promise.all([
+  const [dashboard, settings, loadedCategories, loadedQuotes] = await Promise.all([
     request('/api/admin/dashboard'), request('/api/admin/settings'),
-    request('/api/admin/categories'), request('/api/admin/quotes'), request('/api/admin/messages')
+    request('/api/admin/categories'), request('/api/admin/quotes')
   ]);
   categories = loadedCategories;
   quotes = loadedQuotes;
-  messages = loadedMessages;
   popupSettings = settings;
   document.querySelector('#stat-quotes').textContent = dashboard.quotes.total;
   document.querySelector('#stat-active-quotes').textContent = dashboard.quotes.active || 0;
@@ -271,7 +242,6 @@ async function loadData() {
   renderCategoryOptions();
   renderQuotes();
   renderCategories();
-  renderMessages();
 }
 
 async function enterAdmin() {
@@ -411,7 +381,6 @@ document.querySelector('#categories').addEventListener('click', async event => {
 
 document.querySelector('#quote-search').addEventListener('input', renderQuotes);
 document.querySelector('#quote-category-filter').addEventListener('change', renderQuotes);
-document.querySelector('#message-status-filter').addEventListener('change', renderMessages);
 document.querySelectorAll('.admin-tab').forEach(button => {
   button.addEventListener('click', () => activateTab(button.dataset.tab));
 });
@@ -442,58 +411,6 @@ document.querySelector('#quote-cancel').addEventListener('click', resetQuoteForm
 document.querySelector('#quote-main').addEventListener('change', renderPinUntilField);
 ['#popup-mode', '#popup-pool', '#popup-pinned-until'].forEach(selector => {
   document.querySelector(selector).addEventListener('change', renderPopupSettings);
-});
-document.querySelector('#messages').addEventListener('click', async event => {
-  const button = event.target.closest('button');
-  if (!button) return;
-  try {
-    if (button.dataset.action === 'delete-message' && !confirm('Delete this message?')) return;
-    if (button.dataset.action === 'delete-message') {
-      await request(`/api/admin/messages/${button.dataset.id}`, { method: 'DELETE' });
-    } else if (button.dataset.action === 'save-message') {
-      const card = button.closest('.admin-message');
-      await request(`/api/admin/messages/${button.dataset.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          status: messages.find(message => String(message.id) === button.dataset.id).status,
-          privateSection: card.querySelector('[data-field="private-section"]').value === '1',
-          reply: card.querySelector('[data-field="reply"]').value
-        })
-      });
-    } else {
-      const nextStatus = button.dataset.action === 'approve-message' ? 'approved' : 'rejected';
-      const card = button.closest('.admin-message');
-      await request(`/api/admin/messages/${button.dataset.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          status: nextStatus,
-          privateSection: card.querySelector('[data-field="private-section"]').value === '1',
-          reply: card.querySelector('[data-field="reply"]').value
-        })
-      });
-    }
-    await loadData();
-    showStatus('Message updated.');
-  } catch (error) {
-    showStatus(error.message, true);
-  }
-});
-document.querySelector('#private-password-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const passwordStatus = document.querySelector('#private-password-status');
-  try {
-    await request('/api/admin/private-section/password', {
-      method: 'PUT',
-      body: JSON.stringify({ password: document.querySelector('#private-section-password').value })
-    });
-    event.target.reset();
-    passwordStatus.textContent = 'Private section password saved.';
-    passwordStatus.className = 'status';
-    showStatus('Private section password updated.');
-  } catch (error) {
-    passwordStatus.textContent = error.message;
-    passwordStatus.className = 'status error';
-  }
 });
 function showQuotePreview() {
   const quoteText = document.querySelector('#quote-text').value.trim();

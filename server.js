@@ -12,11 +12,8 @@ const port = Number(process.env.PORT) || 8080;
 const host = process.env.HOST || '0.0.0.0';
 const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
-const messageSubmissionTimes = new Map();
-const privateUnlockAttempts = new Map();
 const adminLoginAttempts = new Map();
 const adminSessionMs = 8 * 60 * 60 * 1000;
-const privateSessionMs = 30 * 60 * 1000;
 const adminLoginWindowMs = 15 * 60 * 1000;
 const adminLoginMaxFailures = 5;
 const voiceUnlockAttempts = new Map();
@@ -78,32 +75,18 @@ app.get('/api/categories', (req, res) => {
   res.json(categories);
 });
 
-app.get('/api/messages', (req, res) => {
-  res.json(db.prepare(`
-    SELECT id, name, message, created_at
-    FROM visitor_messages
-    WHERE status = 'approved' AND private_section = 0
-    ORDER BY created_at DESC, id DESC
-    LIMIT 12
-  `).all());
-});
-
-function hashPrivatePassword(password) {
+function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
   return `${salt}:${hash}`;
 }
 
-function verifyPrivatePassword(password, storedHash) {
+function verifyPassword(password, storedHash) {
   const [salt, expectedHex] = String(storedHash || '').split(':');
   if (!salt || !expectedHex) return false;
   const actual = crypto.scryptSync(password, salt, 64);
   const expected = Buffer.from(expectedHex, 'hex');
   return expected.length === actual.length && crypto.timingSafeEqual(actual, expected);
-}
-
-function privatePasswordHash() {
-  return db.prepare("SELECT value FROM settings WHERE key = 'private_section_password_hash'").get()?.value || '';
 }
 
 function readCookie(req, name) {
@@ -130,63 +113,6 @@ function hasSession(req, cookieName, kind) {
   return Boolean(db.prepare('SELECT 1 FROM auth_sessions WHERE token_hash = ? AND kind = ? AND expires_at > ?')
     .get(hashToken(token), kind, Date.now()));
 }
-
-function hasPrivateAccess(req) {
-  return hasSession(req, 'ayesha_private', 'private');
-}
-
-app.post('/api/private-section/unlock', (req, res) => {
-  const password = typeof req.body?.password === 'string' ? req.body.password : '';
-  const ip = req.get('CF-Connecting-IP') || req.ip || 'unknown';
-  const now = Date.now();
-  const attempt = privateUnlockAttempts.get(ip) || { count: 0, startedAt: now };
-  if (now - attempt.startedAt >= 60 * 1000) {
-    attempt.count = 0;
-    attempt.startedAt = now;
-  }
-  if (attempt.count >= 5) return res.status(429).json({ error: 'Too many attempts. Please try again in a minute.' });
-  attempt.count += 1;
-  privateUnlockAttempts.set(ip, attempt);
-  if (!verifyPrivatePassword(password, privatePasswordHash())) {
-    return res.status(401).json({ error: 'That password is not correct.' });
-  }
-  const token = createSession('private', privateSessionMs);
-  res.setHeader('Set-Cookie', `ayesha_private=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=1800`);
-  res.json({ ok: true });
-});
-
-app.get('/api/private-section/messages', (req, res) => {
-  if (!hasPrivateAccess(req)) return res.status(401).json({ error: 'Private section access is required.' });
-  res.json(db.prepare(`
-    SELECT id, name, message, reply, created_at
-    FROM visitor_messages
-    WHERE status = 'approved' AND private_section = 1
-    ORDER BY created_at DESC, id DESC
-    LIMIT 50
-  `).all());
-});
-
-app.post('/api/messages', (req, res) => {
-  const honeypot = typeof req.body?.website === 'string' ? req.body.website.trim() : '';
-  if (honeypot) return res.status(204).end();
-
-  const forwardedIp = req.get('CF-Connecting-IP') || req.ip || 'unknown';
-  const now = Date.now();
-  const lastSubmission = messageSubmissionTimes.get(forwardedIp) || 0;
-  if (now - lastSubmission < 60 * 1000) {
-    return res.status(429).json({ error: 'Please wait a minute before sending another note.' });
-  }
-
-  try {
-    const message = cleanText(req.body?.message, 'Message', { maxLength: 500 });
-    const name = cleanText(req.body?.name ?? '', 'Name', { maxLength: 80 });
-    db.prepare('INSERT INTO visitor_messages (name, message) VALUES (?, ?)').run(name, message);
-    messageSubmissionTimes.set(forwardedIp, now);
-    res.status(201).json({ ok: true });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
 
 function safeCompare(left, right) {
   // Hashing first keeps the comparison constant-time without revealing the password length.
@@ -314,7 +240,6 @@ app.get('/api/admin/settings', requireAdmin, (req, res) => {
   res.json({
     ...readPopupSettings(),
     pinnedQuote: db.prepare('SELECT id, text, status FROM quotes WHERE is_main_quote = 1 LIMIT 1').get() || null,
-    privatePasswordConfigured: Boolean(privatePasswordHash()),
     voicePasswordConfigured: Boolean(readSetting('voice_password_hash'))
   });
 });
@@ -353,62 +278,6 @@ app.put('/api/admin/settings', requireAdmin, (req, res) => {
 
   update();
   res.json({ ok: true });
-});
-
-app.put('/api/admin/private-section/password', requireAdmin, (req, res) => {
-  try {
-    const password = cleanText(req.body?.password, 'Private section password', { maxLength: 200 });
-    if (password.length < 4) throw new Error('Private section password must be at least 4 characters.');
-    db.prepare(`
-      INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
-    `).run('private_section_password_hash', hashPrivatePassword(password));
-    db.prepare("DELETE FROM auth_sessions WHERE kind = 'private'").run();
-    res.json({ ok: true });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.get('/api/admin/messages', requireAdmin, (req, res) => {
-  res.json(db.prepare(`
-    SELECT id, name, message, status, private_section, reply, created_at, reviewed_at
-    FROM visitor_messages
-    ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC, id DESC
-  `).all());
-});
-
-app.put('/api/admin/messages/:id', requireAdmin, (req, res) => {
-  const status = req.body?.status;
-  if (!['pending', 'approved', 'rejected'].includes(status)) {
-    return res.status(400).json({ error: 'Message status is invalid.' });
-  }
-  const privateSection = req.body?.privateSection === undefined ? null : (req.body.privateSection ? 1 : 0);
-  const replyProvided = req.body?.reply !== undefined;
-  let reply = null;
-  if (replyProvided) {
-    try {
-      reply = cleanText(req.body.reply, 'Reply', { required: false, maxLength: 500 });
-    } catch (error) {
-      return res.status(400).json({ error: error.message });
-    }
-  }
-  const result = db.prepare(`
-    UPDATE visitor_messages
-    SET status = ?,
-      private_section = COALESCE(?, private_section),
-    reply = CASE WHEN ? = 1 THEN ? ELSE reply END,
-      reviewed_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
-    WHERE id = ?
-  `).run(status, privateSection, replyProvided ? 1 : 0, reply, status, Number(req.params.id));
-  if (!result.changes) return res.status(404).json({ error: 'Message not found.' });
-  res.json({ ok: true });
-});
-
-app.delete('/api/admin/messages/:id', requireAdmin, (req, res) => {
-  const result = db.prepare('DELETE FROM visitor_messages WHERE id = ?').run(Number(req.params.id));
-  if (!result.changes) return res.status(404).json({ error: 'Message not found.' });
-  res.status(204).end();
 });
 
 app.get('/api/admin/categories', requireAdmin, (req, res) => {
@@ -633,7 +502,7 @@ app.get('/api/quotes/main', (req, res) => {
   });
 });
 
-// ---- Voice notes: a private two-way thread between Ayesha and Zohaib (voice or short text). ----
+// ---- Our little mailbox: a private two-way thread between Ayesha and Zohaib (voice notes or short text). ----
 
 function readSetting(key) {
   return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
@@ -644,7 +513,7 @@ function unreadVoiceMessages(sender) {
 }
 
 function requireVoice(req, res, next) {
-  if (!hasSession(req, 'ayesha_voice', 'voice')) return res.status(401).json({ error: 'Please enter your voice-notes password.' });
+  if (!hasSession(req, 'ayesha_voice', 'voice')) return res.status(401).json({ error: 'Please enter your mailbox password.' });
   next();
 }
 
@@ -653,8 +522,8 @@ function listVoiceMessages(reader) {
   db.prepare('UPDATE voice_messages SET read_at = CURRENT_TIMESTAMP WHERE sender != ? AND read_at IS NULL').run(reader);
   return db.prepare(`
     SELECT * FROM (
-      SELECT id, sender, kind, body, duration_ms, created_at, read_at FROM voice_messages ORDER BY id DESC LIMIT 200
-    ) ORDER BY id
+      SELECT id, sender, kind, body, duration_ms, created_at, read_at FROM voice_messages ORDER BY created_at DESC, id DESC LIMIT 200
+    ) ORDER BY created_at, id
   `).all().map(message => ({
     id: message.id,
     sender: message.sender,
@@ -726,7 +595,7 @@ const audioUpload = express.raw({ type: req => /^audio\//i.test(req.get('Content
 
 app.post('/api/voice/unlock', (req, res) => {
   const passwordHash = readSetting('voice_password_hash');
-  if (!passwordHash) return res.status(503).json({ error: 'Voice notes are not set up yet.' });
+  if (!passwordHash) return res.status(503).json({ error: 'The mailbox is not set up yet.' });
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
   const ip = req.get('CF-Connecting-IP') || req.ip || 'unknown';
   const now = Date.now();
@@ -738,7 +607,7 @@ app.post('/api/voice/unlock', (req, res) => {
   if (attempt.count >= 5) return res.status(429).json({ error: 'Too many attempts. Please try again in a minute.' });
   attempt.count += 1;
   voiceUnlockAttempts.set(ip, attempt);
-  if (!verifyPrivatePassword(password, passwordHash)) return res.status(401).json({ error: 'That password is not correct.' });
+  if (!verifyPassword(password, passwordHash)) return res.status(401).json({ error: 'That password is not correct.' });
   voiceUnlockAttempts.delete(ip);
   const token = createSession('voice', voiceSessionMs);
   res.setHeader('Set-Cookie', `ayesha_voice=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${voiceSessionMs / 1000}`);
@@ -782,7 +651,7 @@ app.delete('/api/voice/messages/:id', requireVoice, (req, res) => {
 
 app.get('/api/voice/audio/:id', (req, res) => {
   if (!hasSession(req, 'ayesha_voice', 'voice') && !hasSession(req, 'ayesha_admin', 'admin')) {
-    return res.status(401).json({ error: 'Voice notes are private.' });
+    return res.status(401).json({ error: 'The mailbox is private.' });
   }
   const message = db.prepare("SELECT audio_file, audio_type FROM voice_messages WHERE id = ? AND kind = 'voice'").get(Number(req.params.id));
   if (!message) return res.status(404).json({ error: 'Voice note not found.' });
@@ -821,9 +690,9 @@ app.delete('/api/admin/voice/messages/:id', requireAdmin, (req, res) => {
 
 app.put('/api/admin/voice/password', requireAdmin, (req, res) => {
   try {
-    const password = cleanText(req.body?.password, 'Voice-notes password', { maxLength: 200 });
-    if (password.length < 4) throw new Error('Voice-notes password must be at least 4 characters.');
-    saveSetting.run('voice_password_hash', hashPrivatePassword(password));
+    const password = cleanText(req.body?.password, 'Mailbox password', { maxLength: 200 });
+    if (password.length < 4) throw new Error('Mailbox password must be at least 4 characters.');
+    saveSetting.run('voice_password_hash', hashPassword(password));
     db.prepare("DELETE FROM auth_sessions WHERE kind = 'voice'").run();
     res.json({ ok: true });
   } catch (error) {
