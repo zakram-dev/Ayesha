@@ -7,10 +7,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-name=ayesha-gift
-next=ayesha-gift-next
-image=ayesha-ayesha
-port=8081
+# Overridable only to rehearse a deploy on a spare port without touching the live site.
+name=${DEPLOY_NAME:-ayesha-gift}
+next=$name-next
+image=${DEPLOY_IMAGE:-ayesha-ayesha}
+port=${DEPLOY_PORT:-8081}
+data_dir=${DEPLOY_DATA_DIR:-$PWD/data}
 revision=$(git rev-parse --short HEAD)
 
 log() { printf '\n==> %s\n' "$*"; }
@@ -44,7 +46,7 @@ docker rm -f "$next" >/dev/null 2>&1 || true
 docker run -d --name "$next" --network host --restart unless-stopped \
   --env-file .env \
   -e HOST=:: -e PORT="$port" -e DATABASE_PATH=/app/data/ayesha.sqlite -e APP_REVISION="$revision" \
-  -v "$PWD/data:/app/data" \
+  -v "$data_dir:/app/data" \
   "$image_id" >/dev/null
 
 if ! wait_for_log "$next" 'server running|waiting for it to be released' 30; then
