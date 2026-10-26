@@ -305,27 +305,28 @@ document.querySelector('#messages').addEventListener('click', async event => {
           reply: card.querySelector('[data-field="reply"]').value
         })
       });
-      document.querySelector('#private-password-form').addEventListener('submit', async event => {
-        event.preventDefault();
-        const passwordStatus = document.querySelector('#private-password-status');
-        try {
-          await request('/api/admin/private-section/password', {
-            method: 'PUT',
-            body: JSON.stringify({ password: document.querySelector('#private-section-password').value })
-          });
-          event.target.reset();
-          passwordStatus.textContent = 'Private section password saved.';
-          showStatus('Private section password updated.');
-        } catch (error) {
-          passwordStatus.textContent = error.message;
-          passwordStatus.className = 'status error';
-        }
-      });
     }
     await loadData();
     showStatus('Message updated.');
   } catch (error) {
     showStatus(error.message, true);
+  }
+});
+document.querySelector('#private-password-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const passwordStatus = document.querySelector('#private-password-status');
+  try {
+    await request('/api/admin/private-section/password', {
+      method: 'PUT',
+      body: JSON.stringify({ password: document.querySelector('#private-section-password').value })
+    });
+    event.target.reset();
+    passwordStatus.textContent = 'Private section password saved.';
+    passwordStatus.className = 'status';
+    showStatus('Private section password updated.');
+  } catch (error) {
+    passwordStatus.textContent = error.message;
+    passwordStatus.className = 'status error';
   }
 });
 function showQuotePreview() {
