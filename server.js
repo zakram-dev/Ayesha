@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const express = require('express');
@@ -18,6 +19,15 @@ const adminSessionMs = 8 * 60 * 60 * 1000;
 const privateSessionMs = 30 * 60 * 1000;
 const adminLoginWindowMs = 15 * 60 * 1000;
 const adminLoginMaxFailures = 5;
+const voiceUnlockAttempts = new Map();
+const ayeshaSendTimes = [];
+const voiceSessionMs = 30 * 24 * 60 * 60 * 1000;
+const maxVoiceNoteMs = 125 * 1000;
+const voiceAudioTypes = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/aac': 'aac' };
+// Voice notes live next to the database (inside the mounted data folder), never under public/.
+const voiceDir = path.join(path.dirname(db.name), 'voice');
+const ntfyServer = process.env.NTFY_SERVER || 'https://ntfy.sh';
+fs.mkdirSync(voiceDir, { recursive: true });
 
 if (!adminPassword || !sessionSecret) {
   throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
@@ -295,7 +305,8 @@ app.get('/api/admin/dashboard', requireAdmin, (req, res) => {
       ORDER BY views DESC, q.id
       LIMIT 5
     `).all(),
-    mainQuote: db.prepare('SELECT id FROM quotes WHERE is_main_quote = 1 AND active = 1 LIMIT 1').get() || null
+    mainQuote: db.prepare('SELECT id FROM quotes WHERE is_main_quote = 1 AND active = 1 LIMIT 1').get() || null,
+    voiceUnread: unreadVoiceMessages('ayesha')
   });
 });
 
@@ -303,7 +314,8 @@ app.get('/api/admin/settings', requireAdmin, (req, res) => {
   res.json({
     ...readPopupSettings(),
     pinnedQuote: db.prepare('SELECT id, text, status FROM quotes WHERE is_main_quote = 1 LIMIT 1').get() || null,
-    privatePasswordConfigured: Boolean(privatePasswordHash())
+    privatePasswordConfigured: Boolean(privatePasswordHash()),
+    voicePasswordConfigured: Boolean(readSetting('voice_password_hash'))
   });
 });
 
@@ -619,6 +631,232 @@ app.get('/api/quotes/main', (req, res) => {
     category: { id: quote.category_id, name: quote.category_name, slug: quote.category_slug },
     popup: { delay: settings.delay, frequency: settings.frequency, source, deckReset }
   });
+});
+
+// ---- Voice notes: a private two-way thread between Ayesha and Zohaib (voice or short text). ----
+
+function readSetting(key) {
+  return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
+}
+
+function unreadVoiceMessages(sender) {
+  return db.prepare('SELECT COUNT(*) AS count FROM voice_messages WHERE sender = ? AND read_at IS NULL').get(sender).count;
+}
+
+function requireVoice(req, res, next) {
+  if (!hasSession(req, 'ayesha_voice', 'voice')) return res.status(401).json({ error: 'Please enter your voice-notes password.' });
+  next();
+}
+
+// Opening the thread marks the other person's messages as seen.
+function listVoiceMessages(reader) {
+  db.prepare('UPDATE voice_messages SET read_at = CURRENT_TIMESTAMP WHERE sender != ? AND read_at IS NULL').run(reader);
+  return db.prepare(`
+    SELECT * FROM (
+      SELECT id, sender, kind, body, duration_ms, created_at, read_at FROM voice_messages ORDER BY id DESC LIMIT 200
+    ) ORDER BY id
+  `).all().map(message => ({
+    id: message.id,
+    sender: message.sender,
+    kind: message.kind,
+    text: message.body,
+    audioUrl: message.kind === 'voice' ? `/api/voice/audio/${message.id}` : null,
+    durationMs: message.duration_ms,
+    createdAt: message.created_at,
+    readAt: message.read_at
+  }));
+}
+
+// Only messages that were actually saved count towards her 30-an-hour limit.
+function limitAyeshaSending(req, res, next) {
+  const now = Date.now();
+  while (ayeshaSendTimes.length && now - ayeshaSendTimes[0] > 60 * 60 * 1000) ayeshaSendTimes.shift();
+  if (ayeshaSendTimes.length >= 30) return res.status(429).json({ error: 'That is a lot of love for one hour. Please try again a little later.' });
+  next();
+}
+
+function addTextMessage(sender, req) {
+  const text = cleanText(req.body?.text, 'Message', { maxLength: 1000 });
+  db.prepare("INSERT INTO voice_messages (sender, kind, body) VALUES (?, 'text', ?)").run(sender, text);
+}
+
+function addVoiceMessage(sender, req) {
+  const type = (req.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+  const extension = voiceAudioTypes[type];
+  const durationMs = Number(req.get('X-Duration-Ms'));
+  if (!extension || !Buffer.isBuffer(req.body) || !req.body.length) throw new Error('That voice note could not be read.');
+  if (!Number.isInteger(durationMs) || durationMs < 500 || durationMs > maxVoiceNoteMs) {
+    throw new Error('Voice notes can be from half a second up to 2 minutes.');
+  }
+  const fileName = `${crypto.randomBytes(16).toString('hex')}.${extension}`;
+  fs.writeFileSync(path.join(voiceDir, fileName), req.body);
+  db.prepare("INSERT INTO voice_messages (sender, kind, audio_file, audio_type, duration_ms) VALUES (?, 'voice', ?, ?, ?)")
+    .run(sender, fileName, type, durationMs);
+}
+
+function deleteVoiceMessage(id, onlySender = null) {
+  const message = db.prepare('SELECT sender, audio_file FROM voice_messages WHERE id = ?').get(id);
+  if (!message || (onlySender && message.sender !== onlySender)) return false;
+  db.prepare('DELETE FROM voice_messages WHERE id = ?').run(id);
+  if (message.audio_file) fs.rmSync(path.join(voiceDir, path.basename(message.audio_file)), { force: true });
+  return true;
+}
+
+// Sends a short push to Zohaib's phone through ntfy. Only says that something arrived; never the content.
+async function sendPhoneAlert(req, message, tag) {
+  const topic = readSetting('alerts_ntfy_topic');
+  if (!topic) return false;
+  const siteHost = req.get('host') || 'localhost';
+  const siteOrigin = /^(localhost|127\.0\.0\.1)(:|$)/.test(siteHost) ? `http://${siteHost}` : `https://${siteHost}`;
+  try {
+    const response = await fetch(`${ntfyServer}/${topic}`, {
+      method: 'POST',
+      body: message,
+      headers: { Title: 'Ayesha', Tags: tag, Click: `${siteOrigin}/admin/#voice` },
+      signal: AbortSignal.timeout(5000)
+    });
+    return response.ok;
+  } catch (error) {
+    console.warn('Phone alert failed:', error.message);
+    return false;
+  }
+}
+
+const audioUpload = express.raw({ type: req => /^audio\//i.test(req.get('Content-Type') || ''), limit: '8mb' });
+
+app.post('/api/voice/unlock', (req, res) => {
+  const passwordHash = readSetting('voice_password_hash');
+  if (!passwordHash) return res.status(503).json({ error: 'Voice notes are not set up yet.' });
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const ip = req.get('CF-Connecting-IP') || req.ip || 'unknown';
+  const now = Date.now();
+  const attempt = voiceUnlockAttempts.get(ip) || { count: 0, startedAt: now };
+  if (now - attempt.startedAt >= 60 * 1000) {
+    attempt.count = 0;
+    attempt.startedAt = now;
+  }
+  if (attempt.count >= 5) return res.status(429).json({ error: 'Too many attempts. Please try again in a minute.' });
+  attempt.count += 1;
+  voiceUnlockAttempts.set(ip, attempt);
+  if (!verifyPrivatePassword(password, passwordHash)) return res.status(401).json({ error: 'That password is not correct.' });
+  voiceUnlockAttempts.delete(ip);
+  const token = createSession('voice', voiceSessionMs);
+  res.setHeader('Set-Cookie', `ayesha_voice=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${voiceSessionMs / 1000}`);
+  res.json({ ok: true });
+});
+
+app.get('/api/voice/session', requireVoice, (req, res) => {
+  res.json({ unread: unreadVoiceMessages('zohaib') });
+});
+
+app.get('/api/voice/messages', requireVoice, (req, res) => {
+  res.json(listVoiceMessages('ayesha'));
+});
+
+app.post('/api/voice/messages', requireVoice, limitAyeshaSending, (req, res) => {
+  try {
+    addTextMessage('ayesha', req);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  ayeshaSendTimes.push(Date.now());
+  sendPhoneAlert(req, 'Ayesha sent you a little message ✦', 'speech_balloon');
+  res.status(201).json({ ok: true });
+});
+
+app.post('/api/voice/messages/audio', requireVoice, limitAyeshaSending, audioUpload, (req, res) => {
+  try {
+    addVoiceMessage('ayesha', req);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  ayeshaSendTimes.push(Date.now());
+  sendPhoneAlert(req, 'Ayesha sent you a voice note ✦', 'microphone');
+  res.status(201).json({ ok: true });
+});
+
+app.delete('/api/voice/messages/:id', requireVoice, (req, res) => {
+  if (!deleteVoiceMessage(Number(req.params.id), 'ayesha')) return res.status(404).json({ error: 'Message not found.' });
+  res.status(204).end();
+});
+
+app.get('/api/voice/audio/:id', (req, res) => {
+  if (!hasSession(req, 'ayesha_voice', 'voice') && !hasSession(req, 'ayesha_admin', 'admin')) {
+    return res.status(401).json({ error: 'Voice notes are private.' });
+  }
+  const message = db.prepare("SELECT audio_file, audio_type FROM voice_messages WHERE id = ? AND kind = 'voice'").get(Number(req.params.id));
+  if (!message) return res.status(404).json({ error: 'Voice note not found.' });
+  res.set({ 'Content-Type': message.audio_type, 'Cache-Control': 'private, max-age=86400' });
+  res.sendFile(path.join(voiceDir, path.basename(message.audio_file)), error => {
+    if (error && !res.headersSent) res.status(404).json({ error: 'Voice note not found.' });
+  });
+});
+
+app.get('/api/admin/voice/messages', requireAdmin, (req, res) => {
+  res.json(listVoiceMessages('zohaib'));
+});
+
+app.post('/api/admin/voice/messages', requireAdmin, (req, res) => {
+  try {
+    addTextMessage('zohaib', req);
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/voice/messages/audio', requireAdmin, audioUpload, (req, res) => {
+  try {
+    addVoiceMessage('zohaib', req);
+    res.status(201).json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/admin/voice/messages/:id', requireAdmin, (req, res) => {
+  if (!deleteVoiceMessage(Number(req.params.id))) return res.status(404).json({ error: 'Message not found.' });
+  res.status(204).end();
+});
+
+app.put('/api/admin/voice/password', requireAdmin, (req, res) => {
+  try {
+    const password = cleanText(req.body?.password, 'Voice-notes password', { maxLength: 200 });
+    if (password.length < 4) throw new Error('Voice-notes password must be at least 4 characters.');
+    saveSetting.run('voice_password_hash', hashPrivatePassword(password));
+    db.prepare("DELETE FROM auth_sessions WHERE kind = 'voice'").run();
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/alerts', requireAdmin, (req, res) => {
+  res.json({ topic: readSetting('alerts_ntfy_topic') || null });
+});
+
+app.post('/api/admin/alerts', requireAdmin, (req, res) => {
+  const topic = readSetting('alerts_ntfy_topic') || `ayesha-notes-${crypto.randomBytes(12).toString('hex')}`;
+  saveSetting.run('alerts_ntfy_topic', topic);
+  res.json({ topic });
+});
+
+app.delete('/api/admin/alerts', requireAdmin, (req, res) => {
+  saveSetting.run('alerts_ntfy_topic', '');
+  res.status(204).end();
+});
+
+app.post('/api/admin/alerts/test', requireAdmin, async (req, res) => {
+  if (!readSetting('alerts_ntfy_topic')) return res.status(400).json({ error: 'Set up phone alerts first.' });
+  if (!await sendPhoneAlert(req, 'Test alert: you will get a buzz like this when Ayesha sends a note ✦', 'bell')) {
+    return res.status(502).json({ error: 'The test alert could not be sent. Please try again in a moment.' });
+  }
+  res.json({ ok: true });
+});
+
+app.use((error, req, res, next) => {
+  if (error.type === 'entity.too.large') return res.status(413).json({ error: 'That voice note is too big to send.' });
+  next(error);
 });
 
 // On Linux, reusePort lets the next container bind the same port while the current one

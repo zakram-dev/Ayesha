@@ -66,10 +66,39 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK (kind IN ('admin', 'private')),
+    kind TEXT NOT NULL CHECK (kind IN ('admin', 'private', 'voice')),
     expires_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS voice_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender TEXT NOT NULL CHECK (sender IN ('ayesha', 'zohaib')),
+    kind TEXT NOT NULL CHECK (kind IN ('voice', 'text')),
+    body TEXT,
+    audio_file TEXT,
+    audio_type TEXT,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    read_at TEXT
+  );
 `);
+
+// Older databases allow only admin/private sessions; rebuild the table (keeping sessions) so voice sessions fit.
+const authSessionsSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auth_sessions'").get().sql;
+if (!authSessionsSql.includes("'voice'")) {
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE auth_sessions_new (
+        token_hash TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('admin', 'private', 'voice')),
+        expires_at INTEGER NOT NULL
+      );
+      INSERT INTO auth_sessions_new (token_hash, kind, expires_at) SELECT token_hash, kind, expires_at FROM auth_sessions;
+      DROP TABLE auth_sessions;
+      ALTER TABLE auth_sessions_new RENAME TO auth_sessions;
+    `);
+  })();
+}
 
 const messageColumns = db.prepare('PRAGMA table_info(visitor_messages)').all();
 if (!messageColumns.some(column => column.name === 'private_section')) {

@@ -115,7 +115,127 @@ function resetQuoteForm() {
 function activateTab(tabName) {
   document.querySelectorAll('.admin-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tabName));
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tabName));
+  window.clearInterval(voicePollTimer);
+  if (tabName === 'voice') {
+    loadVoiceThread();
+    loadAlerts();
+    voicePollTimer = window.setInterval(loadVoiceThread, 20000);
+  } else {
+    voicePlayer.stop();
+  }
 }
+
+// ---- Voice notes with Ayesha ----
+const voiceThread = document.querySelector('#admin-voice-thread');
+const voicePlayer = window.VoiceKit.attachPlayer(voiceThread);
+let voicePollTimer = null;
+
+function showVoiceBadge(unread) {
+  const badge = document.querySelector('#voice-tab-badge');
+  badge.hidden = !unread;
+  badge.textContent = unread || '';
+}
+
+async function loadVoiceThread() {
+  try {
+    const messages = await request('/api/admin/voice/messages');
+    window.VoiceKit.renderThread(voiceThread, messages, {
+      me: 'zohaib',
+      names: { ayesha: 'Ayesha', zohaib: 'You' },
+      canDelete: () => true
+    });
+    showVoiceBadge(0);
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+}
+
+window.VoiceKit.mountComposer(document.querySelector('#admin-voice-composer'), {
+  placeholder: 'or type a little message to Ayesha…',
+  async sendVoice(recording) {
+    await window.VoiceKit.uploadVoice('/api/admin/voice/messages/audio', recording);
+    await loadVoiceThread();
+  },
+  async sendText(text) {
+    await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ text }) });
+    await loadVoiceThread();
+  }
+});
+
+voiceThread.addEventListener('click', async event => {
+  const button = event.target.closest('.voice-delete');
+  if (!button || !confirm('Delete this message for both of you?')) return;
+  try {
+    await request(`/api/admin/voice/messages/${button.dataset.id}`, { method: 'DELETE' });
+    await loadVoiceThread();
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+});
+
+function renderAlerts(topic) {
+  const setup = document.querySelector('#alerts-setup');
+  setup.innerHTML = topic
+    ? `<p>Alerts are on. To get them on your phone:</p>
+      <ol class="alert-steps">
+        <li>Install the free <strong>ntfy</strong> app (App Store or Google Play).</li>
+        <li>Tap <strong>+</strong> and subscribe to this topic: <code>${escapeHtml(topic)}</code></li>
+        <li>Tap <strong>Send test alert</strong> below. Your phone should buzz.</li>
+      </ol>
+      <p class="setting-hint">Keep the topic name private: anyone who knows it could see the alerts. Alerts only say that something arrived, never what it says.</p>
+      <div class="alert-actions"><button class="button" type="button" data-alerts="test">Send test alert</button><button class="button secondary" type="button" data-alerts="off">Turn off alerts</button></div>`
+    : `<p>Get a buzz on your phone whenever Ayesha sends a voice note or message.</p>
+      <div class="alert-actions"><button class="button" type="button" data-alerts="on">Set up phone alerts</button></div>`;
+}
+
+async function loadAlerts() {
+  try {
+    renderAlerts((await request('/api/admin/alerts')).topic);
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+}
+
+document.querySelector('#alerts-setup').addEventListener('click', async event => {
+  const button = event.target.closest('[data-alerts]');
+  if (!button) return;
+  const alertsStatus = document.querySelector('#alerts-status');
+  alertsStatus.className = 'status';
+  alertsStatus.textContent = '';
+  try {
+    if (button.dataset.alerts === 'on') renderAlerts((await request('/api/admin/alerts', { method: 'POST' })).topic);
+    if (button.dataset.alerts === 'off' && confirm('Turn off phone alerts?')) {
+      await request('/api/admin/alerts', { method: 'DELETE' });
+      renderAlerts(null);
+    }
+    if (button.dataset.alerts === 'test') {
+      await request('/api/admin/alerts/test', { method: 'POST' });
+      alertsStatus.textContent = 'Test alert sent. Check your phone ✦';
+    }
+  } catch (error) {
+    alertsStatus.textContent = error.message;
+    alertsStatus.className = 'status error';
+  }
+});
+
+document.querySelector('#voice-password-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const passwordStatus = document.querySelector('#voice-password-status');
+  try {
+    await request('/api/admin/voice/password', {
+      method: 'PUT',
+      body: JSON.stringify({ password: document.querySelector('#voice-password-input').value })
+    });
+    event.target.reset();
+    passwordStatus.textContent = 'Her password is saved. Let her know the new one ✦';
+    passwordStatus.className = 'status';
+    document.querySelector('#voice-setup-hint').hidden = true;
+  } catch (error) {
+    passwordStatus.textContent = error.message;
+    passwordStatus.className = 'status error';
+  }
+});
+document.querySelector('#voice-refresh').addEventListener('click', loadVoiceThread);
 
 async function loadData() {
   const [dashboard, settings, loadedCategories, loadedQuotes, loadedMessages] = await Promise.all([
@@ -145,6 +265,8 @@ async function loadData() {
     .map(category => `<option value="${category.id}">${escapeHtml(category.name)} (${category.quote_count} quote${category.quote_count === 1 ? '' : 's'}${category.active ? '' : ', inactive'})</option>`).join('');
   document.querySelector('#popup-pool').value = String(settings.poolCategoryId);
   document.querySelector('#popup-pinned-until').value = settings.pinnedUntil;
+  document.querySelector('#voice-setup-hint').hidden = settings.voicePasswordConfigured;
+  showVoiceBadge(dashboard.voiceUnread);
   renderPopupSettings();
   renderCategoryOptions();
   renderQuotes();
@@ -157,6 +279,8 @@ async function enterAdmin() {
   adminContent.hidden = false;
   logoutButton.hidden = false;
   await loadData();
+  // Phone alerts link straight to /admin/#voice.
+  if (window.location.hash === '#voice') activateTab('voice');
 }
 
 document.querySelector('#login-form').addEventListener('submit', async event => {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css?v=popup-rotation" />
+    <link rel="stylesheet" href="/admin/admin.css?v=voice-notes" />
   </head>
   <body>
     <main>
@@ -33,6 +33,7 @@
           <button class="admin-tab" type="button" data-tab="categories">Categories</button>
           <button class="admin-tab" type="button" data-tab="quotes">Quotes</button>
           <button class="admin-tab" type="button" data-tab="messages">Messages</button>
+          <button class="admin-tab" type="button" data-tab="voice">Voice notes <b class="tab-badge" id="voice-tab-badge" hidden></b></button>
           <button class="admin-tab" type="button" data-tab="settings">Settings</button>
         </nav>
 
@@ -133,6 +134,29 @@
           </section>
         </div>
 
+        <div class="tab-panel" data-panel="voice">
+          <section class="panel">
+            <div class="section-header"><h2>Voice notes with Ayesha</h2><button class="button secondary" id="voice-refresh" type="button">Refresh</button></div>
+            <p class="setting-hint" id="voice-setup-hint" hidden>She can't open her voice notes until you set her password below.</p>
+            <div class="voice-thread" id="admin-voice-thread"></div>
+            <div id="admin-voice-composer"></div>
+          </section>
+          <section class="panel">
+            <div class="section-header"><h2>Her voice-notes password</h2></div>
+            <p>Choose the password Ayesha uses to open “Little voice notes”, then tell her. Her phone stays signed in for 30 days. Saving a new one signs her out until she enters it.</p>
+            <form class="settings-form" id="voice-password-form">
+              <label>New password <input id="voice-password-input" type="password" minlength="4" maxlength="200" autocomplete="new-password" required /></label>
+              <button class="button" type="submit">Save her password</button>
+            </form>
+            <p id="voice-password-status" class="status" role="status"></p>
+          </section>
+          <section class="panel">
+            <div class="section-header"><h2>Phone alerts</h2></div>
+            <div id="alerts-setup"></div>
+            <p id="alerts-status" class="status" role="status"></p>
+          </section>
+        </div>
+
         <div class="tab-panel" data-panel="messages">
           <section class="panel">
             <div class="section-header"><h2>Visitor messages</h2><select id="message-status-filter" aria-label="Filter messages by status"><option value="">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div>
@@ -151,6 +175,7 @@
         <button class="button" id="preview-dismiss" type="button">Back to editing</button>
       </div>
     </div>
-    <script src="/admin/admin.js?v=popup-rotation"></script>
+    <script src="/voice-kit.js?v=voice-notes"></script>
+    <script src="/admin/admin.js?v=voice-notes"></script>
   </body>
 </html>
