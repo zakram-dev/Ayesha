@@ -16,6 +16,7 @@ const analyticsKey = 'ayesha-gift-insights';
 const recentQuotesKey = 'ayesha-recent-quotes';
 const analyticsSessionKey = 'ayesha-analytics-session';
 const featureAnnouncementKey = 'ayesha-feature-announcement-v1';
+const popupSeenKey = 'ayesha-popup-seen';
 let featureAnnouncementActive = false;
 function getAnalyticsSessionId() {
   let sessionId = sessionStorage.getItem(analyticsSessionKey);
@@ -148,12 +149,34 @@ async function showMessage(mood = 'welcome') {
   }
 }
 
+function getSeenPopupQuotes() {
+  try {
+    const seen = JSON.parse(localStorage.getItem(popupSeenKey) || '[]');
+    return Array.isArray(seen) ? seen.filter(Number.isInteger) : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+// Remembers rotated popup quotes so the next visit gets one she hasn't seen; the server says when the deck starts over.
+function rememberPopupQuote(quote) {
+  if (quote.popup.source !== 'rotation') return;
+  const seen = quote.popup.deckReset ? [] : getSeenPopupQuotes();
+  try {
+    localStorage.setItem(popupSeenKey, JSON.stringify([...seen.filter(id => id !== quote.id), quote.id].slice(-1000)));
+  } catch (error) {
+    console.warn('Unable to save seen popup quotes.', error);
+  }
+}
+
 async function showMainQuote() {
   try {
-    const response = await fetch('/api/quotes/main');
+    const today = new Date().toLocaleDateString('en-CA');
+    const response = await fetch(`/api/quotes/main?today=${today}&exclude=${getSeenPopupQuotes().join(',')}`);
     if (!response.ok) return;
     const quote = await response.json();
     if (!shouldShowMainQuote(quote.popup.frequency)) return null;
+    rememberPopupQuote(quote);
     await new Promise(resolve => window.setTimeout(resolve, quote.popup.delay));
     activeMood = quote.category.slug;
     activeQuote = quote;

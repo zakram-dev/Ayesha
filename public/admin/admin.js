@@ -5,6 +5,7 @@ const status = document.querySelector('#status');
 let categories = [];
 let quotes = [];
 let messages = [];
+let popupSettings = null;
 let editingQuoteId = null;
 let editingCategoryId = null;
 
@@ -42,7 +43,7 @@ function renderQuotes() {
   document.querySelector('#quotes').innerHTML = quotes
     .filter(quote => (!categoryFilter || String(quote.category_id) === categoryFilter)
       && (quote.text.toLowerCase().includes(search) || quote.category_name.toLowerCase().includes(search)))
-    .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">main</b>' : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${escapeHtml(quote.status || (quote.active ? 'active' : 'archived'))}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.status === 'active' ? 'Archive' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
+    .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">pinned</b>' : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${escapeHtml(quote.status || (quote.active ? 'active' : 'archived'))}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.status === 'active' ? 'Archive' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
 }
 
 function renderCategories() {
@@ -76,6 +77,41 @@ function renderMessages() {
     : '<p class="empty-message">No messages in this view.</p>';
 }
 
+function renderPopupSettings() {
+  const mode = document.querySelector('#popup-mode').value;
+  const pool = categories.find(category => String(category.id) === document.querySelector('#popup-pool').value);
+  const pinnedUntil = document.querySelector('#popup-pinned-until').value;
+  const pinnedQuote = popupSettings?.pinnedQuote;
+  document.querySelectorAll('[data-popup-mode]').forEach(field => { field.hidden = field.dataset.popupMode !== mode; });
+
+  let hint;
+  if (mode === 'rotate') {
+    hint = pool
+      ? `Each visit shows a quote from ${pool.name} that she hasn't seen yet. Once she has seen all ${pool.quote_count}, it reshuffles.`
+      : 'Choose a category to rotate through.';
+  } else if (!pinnedQuote) {
+    hint = 'No quote is pinned yet. Tick "Pin as popup quote" on a quote in the Quotes tab. Until then the popup keeps rotating.';
+  } else if (pinnedUntil && pinnedUntil < new Date().toLocaleDateString('en-CA')) {
+    hint = `The pin on "${pinnedQuote.text}" ended on ${pinnedUntil}, so the popup is rotating again.`;
+  } else {
+    hint = `Showing "${pinnedQuote.text}" ${pinnedUntil ? `until the end of ${pinnedUntil}, then back to rotating.` : 'with no end date.'}`;
+  }
+  document.querySelector('#popup-mode-hint').textContent = hint;
+}
+
+function renderPinUntilField() {
+  document.querySelector('#quote-pin-until-label').hidden = !document.querySelector('#quote-main').checked;
+}
+
+function resetQuoteForm() {
+  editingQuoteId = null;
+  document.querySelector('#quote-form').reset();
+  document.querySelector('#quote-status').value = 'draft';
+  document.querySelector('#quote-submit').textContent = 'Add quote';
+  document.querySelector('#quote-cancel').hidden = true;
+  renderPinUntilField();
+}
+
 function activateTab(tabName) {
   document.querySelectorAll('.admin-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tabName));
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tabName));
@@ -89,6 +125,7 @@ async function loadData() {
   categories = loadedCategories;
   quotes = loadedQuotes;
   messages = loadedMessages;
+  popupSettings = settings;
   document.querySelector('#stat-quotes').textContent = dashboard.quotes.total;
   document.querySelector('#stat-active-quotes').textContent = dashboard.quotes.active || 0;
   document.querySelector('#stat-categories').textContent = dashboard.categories.total;
@@ -103,6 +140,12 @@ async function loadData() {
   document.querySelector('#popup-enabled').checked = settings.enabled;
   document.querySelector('#popup-delay').value = settings.delay;
   document.querySelector('#popup-frequency').value = settings.frequency;
+  document.querySelector('#popup-mode').value = settings.mode;
+  document.querySelector('#popup-pool').innerHTML = categories
+    .map(category => `<option value="${category.id}">${escapeHtml(category.name)} (${category.quote_count} quote${category.quote_count === 1 ? '' : 's'}${category.active ? '' : ', inactive'})</option>`).join('');
+  document.querySelector('#popup-pool').value = String(settings.poolCategoryId);
+  document.querySelector('#popup-pinned-until').value = settings.pinnedUntil;
+  renderPopupSettings();
   renderCategoryOptions();
   renderQuotes();
   renderCategories();
@@ -139,14 +182,13 @@ document.querySelector('#quote-form').addEventListener('submit', async event => 
       active: document.querySelector('#quote-status').value === 'active',
       isMainQuote: document.querySelector('#quote-main').checked
     };
+    if (payload.isMainQuote) payload.pinnedUntil = document.querySelector('#quote-pin-until').value;
     await request(editingQuoteId ? `/api/admin/quotes/${editingQuoteId}` : '/api/admin/quotes', { method: editingQuoteId ? 'PUT' : 'POST', body: JSON.stringify(payload) });
-    editingQuoteId = null;
-    event.target.reset();
-    document.querySelector('#quote-status').value = 'draft';
-    document.querySelector('#quote-submit').textContent = 'Add quote';
-    document.querySelector('#quote-cancel').hidden = true;
+    resetQuoteForm();
     await loadData();
-    showStatus('Quote saved.');
+    if (!payload.isMainQuote) showStatus('Quote saved.');
+    else if (payload.status !== 'active') showStatus('Quote saved and pinned, but it is not Active yet, so the popup keeps rotating until you set its status to Active.', true);
+    else showStatus(`Quote saved and pinned as the popup${payload.pinnedUntil ? ` until the end of ${payload.pinnedUntil}` : ''}.`);
   } catch (error) {
     showStatus(error.message, true);
   }
@@ -191,6 +233,8 @@ document.querySelector('#quotes').addEventListener('click', async event => {
       document.querySelector('#quote-order').value = quote.display_order;
       document.querySelector('#quote-status').value = quote.status || (quote.active ? 'active' : 'archived');
       document.querySelector('#quote-main').checked = Boolean(quote.is_main_quote);
+      document.querySelector('#quote-pin-until').value = quote.is_main_quote ? popupSettings?.pinnedUntil || '' : '';
+      renderPinUntilField();
       document.querySelector('#quote-submit').textContent = 'Save changes';
       document.querySelector('#quote-cancel').hidden = false;
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -214,11 +258,7 @@ document.querySelector('#categories').addEventListener('click', async event => {
   const category = categories.find(item => item.id === Number(button.dataset.id));
   try {
     if (button.dataset.action === 'add-quote') {
-      editingQuoteId = null;
-      document.querySelector('#quote-form').reset();
-      document.querySelector('#quote-status').value = 'draft';
-      document.querySelector('#quote-submit').textContent = 'Add quote';
-      document.querySelector('#quote-cancel').hidden = true;
+      resetQuoteForm();
       document.querySelector('#quote-category').value = String(category.id);
       activateTab('quotes');
       document.querySelector('#quote-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -257,8 +297,12 @@ document.querySelector('#settings-form').addEventListener('submit', async event 
     await request('/api/admin/settings', { method: 'PUT', body: JSON.stringify({
       enabled: document.querySelector('#popup-enabled').checked,
       delay: Number(document.querySelector('#popup-delay').value),
-      frequency: document.querySelector('#popup-frequency').value
+      frequency: document.querySelector('#popup-frequency').value,
+      mode: document.querySelector('#popup-mode').value,
+      poolCategoryId: Number(document.querySelector('#popup-pool').value),
+      pinnedUntil: document.querySelector('#popup-pinned-until').value
     }) });
+    await loadData();
     showStatus('Popup settings saved.');
   } catch (error) {
     showStatus(error.message, true);
@@ -270,12 +314,10 @@ document.querySelector('#category-cancel').addEventListener('click', () => {
   document.querySelector('#category-submit').textContent = 'Add category';
   document.querySelector('#category-cancel').hidden = true;
 });
-document.querySelector('#quote-cancel').addEventListener('click', () => {
-  editingQuoteId = null;
-  document.querySelector('#quote-form').reset();
-  document.querySelector('#quote-status').value = 'draft';
-  document.querySelector('#quote-submit').textContent = 'Add quote';
-  document.querySelector('#quote-cancel').hidden = true;
+document.querySelector('#quote-cancel').addEventListener('click', resetQuoteForm);
+document.querySelector('#quote-main').addEventListener('change', renderPinUntilField);
+['#popup-mode', '#popup-pool', '#popup-pinned-until'].forEach(selector => {
+  document.querySelector(selector).addEventListener('change', renderPopupSettings);
 });
 document.querySelector('#messages').addEventListener('click', async event => {
   const button = event.target.closest('button');

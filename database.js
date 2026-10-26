@@ -149,7 +149,14 @@ seedQuotes();
 
 db.prepare(`
   INSERT INTO settings (key, value)
-  VALUES ('main_quote_enabled', '1'), ('main_quote_delay', '700'), ('main_quote_frequency', 'session')
+  VALUES ('main_quote_enabled', '1'), ('main_quote_delay', '700'), ('main_quote_frequency', 'session'),
+    ('main_quote_mode', 'rotate'), ('main_quote_pinned_until', '')
+  ON CONFLICT(key) DO NOTHING
+`).run();
+
+db.prepare(`
+  INSERT INTO settings (key, value)
+  SELECT 'main_quote_pool_category', CAST(id AS TEXT) FROM categories WHERE slug = 'welcome'
   ON CONFLICT(key) DO NOTHING
 `).run();
 

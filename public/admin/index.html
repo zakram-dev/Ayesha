@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css" />
+    <link rel="stylesheet" href="/admin/admin.css?v=popup-rotation" />
   </head>
   <body>
     <main>
@@ -55,8 +55,17 @@
         <div class="tab-panel" data-panel="settings">
           <section class="panel">
             <div class="section-header"><h2>Main quote popup</h2></div>
-            <form class="settings-form" id="settings-form">
-              <label class="checkbox"><input id="popup-enabled" type="checkbox" /> Show popup on public page</label>
+            <form class="settings-form popup-settings-form" id="settings-form">
+              <label class="checkbox wide"><input id="popup-enabled" type="checkbox" /> Show popup on public page</label>
+              <label>Which quote
+                <select id="popup-mode">
+                  <option value="rotate">Rotate: a new quote every visit</option>
+                  <option value="pinned">Pinned quote</option>
+                </select>
+              </label>
+              <label data-popup-mode="rotate">Rotate through <select id="popup-pool"></select></label>
+              <label data-popup-mode="pinned">Pinned until (optional) <input id="popup-pinned-until" type="date" /></label>
+              <p class="setting-hint wide" id="popup-mode-hint"></p>
               <label>Delay (milliseconds) <input id="popup-delay" type="number" min="0" max="60000" step="100" required /></label>
               <label>Show frequency
                 <select id="popup-frequency">
@@ -94,7 +103,8 @@
                   <option value="archived">Archived</option>
                 </select>
               </label>
-              <label class="checkbox"><input id="quote-main" type="checkbox" /> Make main quote</label>
+              <label class="checkbox"><input id="quote-main" type="checkbox" /> Pin as popup quote</label>
+              <label id="quote-pin-until-label" hidden>Pinned until (optional) <input id="quote-pin-until" type="date" /></label>
               <button class="button" id="quote-submit" type="submit">Add quote</button>
               <button class="button secondary" id="quote-preview" type="button">Preview</button>
               <button class="button secondary" id="quote-cancel" type="button" hidden>Cancel edit</button>
@@ -141,6 +151,6 @@
         <button class="button" id="preview-dismiss" type="button">Back to editing</button>
       </div>
     </div>
-    <script src="/admin/admin.js"></script>
+    <script src="/admin/admin.js?v=popup-rotation"></script>
   </body>
 </html>

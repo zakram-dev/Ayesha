@@ -207,6 +207,38 @@ function parseBoolean(value, fallback = false) {
   return value === undefined ? fallback : Boolean(value);
 }
 
+function parseIdList(value, max) {
+  if (typeof value !== 'string') return [];
+  return [...new Set(value.split(',').map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(-max);
+}
+
+const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+const popupSettingKeys = ['main_quote_enabled', 'main_quote_delay', 'main_quote_frequency', 'main_quote_mode', 'main_quote_pool_category', 'main_quote_pinned_until'];
+const saveSetting = db.prepare(`
+  INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+  ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+`);
+
+function readPopupSettings() {
+  const settings = db.prepare(`SELECT key, value FROM settings WHERE key IN (${popupSettingKeys.map(() => '?').join(',')})`)
+    .all(...popupSettingKeys)
+    .reduce((result, setting) => ({ ...result, [setting.key]: setting.value }), {});
+  return {
+    enabled: settings.main_quote_enabled === '1',
+    delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
+    frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session',
+    mode: settings.main_quote_mode === 'pinned' ? 'pinned' : 'rotate',
+    poolCategoryId: Number(settings.main_quote_pool_category) || null,
+    pinnedUntil: isoDate.test(settings.main_quote_pinned_until || '') ? settings.main_quote_pinned_until : ''
+  };
+}
+
+function readPinnedUntil(value) {
+  const pinnedUntil = typeof value === 'string' ? value.trim() : '';
+  if (pinnedUntil && !isoDate.test(pinnedUntil)) throw new Error('Pinned-until must be a date like 2026-11-05.');
+  return pinnedUntil;
+}
+
 app.post('/api/admin/login', (req, res) => {
   const ip = req.get('CF-Connecting-IP') || req.ip || 'unknown';
   const now = Date.now();
@@ -268,36 +300,43 @@ app.get('/api/admin/dashboard', requireAdmin, (req, res) => {
 });
 
 app.get('/api/admin/settings', requireAdmin, (req, res) => {
-  const settings = db.prepare('SELECT key, value FROM settings WHERE key IN (?, ?, ?)').all(
-    'main_quote_enabled', 'main_quote_delay', 'main_quote_frequency'
-  ).reduce((result, setting) => ({ ...result, [setting.key]: setting.value }), {});
   res.json({
-    enabled: settings.main_quote_enabled === '1',
-    delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
-    frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session',
+    ...readPopupSettings(),
+    pinnedQuote: db.prepare('SELECT id, text, status FROM quotes WHERE is_main_quote = 1 LIMIT 1').get() || null,
     privatePasswordConfigured: Boolean(privatePasswordHash())
   });
-
 });
 
 app.put('/api/admin/settings', requireAdmin, (req, res) => {
   const delay = Number(req.body?.delay);
   const frequency = req.body?.frequency;
+  const mode = req.body?.mode;
+  const poolCategoryId = Number(req.body?.poolCategoryId);
   if (!Number.isInteger(delay) || delay < 0 || delay > 60000) {
     return res.status(400).json({ error: 'Popup delay must be a whole number from 0 to 60000 milliseconds.' });
   }
   if (!['session', 'day', 'always'].includes(frequency)) {
     return res.status(400).json({ error: 'Popup frequency is invalid.' });
   }
-  const save = db.prepare(`
-    INSERT INTO settings (key, value, updated_at)
-    VALUES (?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
-  `);
+  if (!['rotate', 'pinned'].includes(mode)) {
+    return res.status(400).json({ error: 'Popup quote choice is invalid.' });
+  }
+  if (!Number.isInteger(poolCategoryId) || !db.prepare('SELECT id FROM categories WHERE id = ?').get(poolCategoryId)) {
+    return res.status(400).json({ error: 'Choose a category to rotate through.' });
+  }
+  let pinnedUntil;
+  try {
+    pinnedUntil = readPinnedUntil(req.body?.pinnedUntil);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
   const update = db.transaction(() => {
-    save.run('main_quote_enabled', req.body?.enabled ? '1' : '0');
-    save.run('main_quote_delay', String(delay));
-    save.run('main_quote_frequency', frequency);
+    saveSetting.run('main_quote_enabled', req.body?.enabled ? '1' : '0');
+    saveSetting.run('main_quote_delay', String(delay));
+    saveSetting.run('main_quote_frequency', frequency);
+    saveSetting.run('main_quote_mode', mode);
+    saveSetting.run('main_quote_pool_category', String(poolCategoryId));
+    saveSetting.run('main_quote_pinned_until', pinnedUntil);
   });
 
   update();
@@ -442,8 +481,14 @@ app.post('/api/admin/quotes', requireAdmin, (req, res) => {
     const category = db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId);
     if (!category) throw new Error('Category not found.');
     const status = ['active', 'draft', 'archived'].includes(req.body?.status) ? req.body.status : 'active';
+    const pinned = parseBoolean(req.body?.isMainQuote);
+    const pinnedUntil = pinned ? readPinnedUntil(req.body?.pinnedUntil) : '';
     const addQuote = db.transaction(() => {
-      if (parseBoolean(req.body?.isMainQuote)) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
+      if (pinned) {
+        db.prepare('UPDATE quotes SET is_main_quote = 0').run();
+        saveSetting.run('main_quote_mode', 'pinned');
+        saveSetting.run('main_quote_pinned_until', pinnedUntil);
+      }
       return db.prepare(`
         INSERT INTO quotes (text, category_id, author, active, status, is_main_quote, display_order)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -463,13 +508,26 @@ app.put('/api/admin/quotes/:id', requireAdmin, (req, res) => {
     if (!Number.isInteger(id) || !Number.isInteger(categoryId)) throw new Error('Invalid quote or category ID.');
     if (!db.prepare('SELECT id FROM categories WHERE id = ?').get(categoryId)) throw new Error('Category not found.');
     const status = ['active', 'draft', 'archived'].includes(req.body?.status) ? req.body.status : (parseBoolean(req.body?.active) ? 'active' : 'archived');
+    const pinned = parseBoolean(req.body?.isMainQuote);
+    const wasPinned = Boolean(db.prepare('SELECT is_main_quote FROM quotes WHERE id = ?').get(id)?.is_main_quote);
+    // Only the quote form sends pinnedUntil; quick actions like Archive leave the popup settings alone.
+    const pinnedUntil = pinned && req.body?.pinnedUntil !== undefined ? readPinnedUntil(req.body.pinnedUntil) : null;
     const updateQuote = db.transaction(() => {
-      if (parseBoolean(req.body?.isMainQuote)) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
-      return db.prepare(`
+      if (pinned) db.prepare('UPDATE quotes SET is_main_quote = 0').run();
+      const result = db.prepare(`
         UPDATE quotes
         SET text = ?, category_id = ?, author = ?, active = ?, status = ?, is_main_quote = ?, display_order = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), status === 'active' ? 1 : 0, status, parseBoolean(req.body?.isMainQuote) ? 1 : 0, Number(req.body?.displayOrder) || 0, id);
+      `).run(text, categoryId, cleanText(req.body?.author, 'Author', { required: false, maxLength: 120 }), status === 'active' ? 1 : 0, status, pinned ? 1 : 0, Number(req.body?.displayOrder) || 0, id);
+      if (pinned && !wasPinned) {
+        saveSetting.run('main_quote_mode', 'pinned');
+        saveSetting.run('main_quote_pinned_until', pinnedUntil ?? '');
+      } else if (pinned && pinnedUntil !== null) {
+        saveSetting.run('main_quote_pinned_until', pinnedUntil);
+      } else if (!pinned && wasPinned) {
+        saveSetting.run('main_quote_mode', 'rotate');
+      }
+      return result;
     });
     if (!updateQuote().changes) return res.status(404).json({ error: 'Quote not found.' });
     res.json({ ok: true });
@@ -479,16 +537,17 @@ app.put('/api/admin/quotes/:id', requireAdmin, (req, res) => {
 });
 
 app.delete('/api/admin/quotes/:id', requireAdmin, (req, res) => {
-  const result = db.prepare('DELETE FROM quotes WHERE id = ?').run(Number(req.params.id));
+  const id = Number(req.params.id);
+  const wasPinned = Boolean(db.prepare('SELECT is_main_quote FROM quotes WHERE id = ?').get(id)?.is_main_quote);
+  const result = db.prepare('DELETE FROM quotes WHERE id = ?').run(id);
   if (!result.changes) return res.status(404).json({ error: 'Quote not found.' });
+  if (wasPinned) saveSetting.run('main_quote_mode', 'rotate');
   res.status(204).end();
 });
 
 app.get('/api/quotes/random', (req, res) => {
   const category = typeof req.query.category === 'string' ? req.query.category : 'welcome';
-  const excludedIds = typeof req.query.exclude === 'string'
-    ? [...new Set(req.query.exclude.split(',').map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, 10)
-    : [];
+  const excludedIds = parseIdList(req.query.exclude, 10);
   const exclusionClause = excludedIds.length ? `AND q.id NOT IN (${excludedIds.map(() => '?').join(',')})` : '';
   const quote = db.prepare(`
     SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
@@ -517,30 +576,48 @@ app.get('/api/quotes/random', (req, res) => {
   });
 });
 
-app.get('/api/quotes/main', (req, res) => {
-  const settings = db.prepare('SELECT key, value FROM settings WHERE key IN (?, ?, ?)').all(
-    'main_quote_enabled', 'main_quote_delay', 'main_quote_frequency'
-  ).reduce((result, setting) => ({ ...result, [setting.key]: setting.value }), {});
-  if (settings.main_quote_enabled !== '1') return res.status(404).json({ error: 'Main quote popup is disabled.' });
-  const quote = db.prepare(`
-    SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
-    FROM quotes q
-    JOIN categories c ON c.id = q.category_id
-    WHERE q.active = 1 AND q.status = 'active' AND q.is_main_quote = 1 AND c.active = 1
-    ORDER BY q.updated_at DESC, q.id DESC
-    LIMIT 1
-  `).get();
+const popupQuoteQuery = `
+  SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
+  FROM quotes q
+  JOIN categories c ON c.id = q.category_id
+  WHERE q.active = 1 AND q.status = 'active' AND c.active = 1
+`;
 
-  if (!quote) return res.status(404).json({ error: 'No main quote is configured.' });
+app.get('/api/quotes/main', (req, res) => {
+  const settings = readPopupSettings();
+  if (!settings.enabled) return res.status(404).json({ error: 'Main quote popup is disabled.' });
+  // The visitor's own date, so "pinned until" ends at midnight where she is.
+  const today = isoDate.test(req.query.today || '') ? req.query.today : new Date().toISOString().slice(0, 10);
+  let quote = null;
+  let source = 'rotation';
+  let deckReset = false;
+
+  if (settings.mode === 'pinned' && (!settings.pinnedUntil || today <= settings.pinnedUntil)) {
+    quote = db.prepare(`${popupQuoteQuery} AND q.is_main_quote = 1 LIMIT 1`).get();
+    if (quote) source = 'pinned';
+  }
+
+  // Shuffled deck: the browser sends the popup quotes it has already seen, so every visit gets an
+  // unseen one. Once the whole pool has been seen, the deck starts again (avoiding the last one shown).
+  if (!quote) {
+    const seenIds = parseIdList(req.query.exclude, 1000);
+    const notSeen = seenIds.length ? `AND q.id NOT IN (${seenIds.map(() => '?').join(',')})` : '';
+    quote = db.prepare(`${popupQuoteQuery} AND q.category_id = ? ${notSeen} ORDER BY RANDOM() LIMIT 1`)
+      .get(settings.poolCategoryId, ...seenIds);
+    if (!quote) {
+      deckReset = true;
+      quote = db.prepare(`${popupQuoteQuery} AND q.category_id = ? ORDER BY q.id = ?, RANDOM() LIMIT 1`)
+        .get(settings.poolCategoryId, seenIds.at(-1) ?? 0);
+    }
+  }
+
+  if (!quote) return res.status(404).json({ error: 'No popup quote is available.' });
   res.json({
     id: quote.id,
     text: quote.text,
     author: quote.author,
     category: { id: quote.category_id, name: quote.category_name, slug: quote.category_slug },
-    popup: {
-      delay: Math.max(0, Math.min(60000, Number(settings.main_quote_delay) || 700)),
-      frequency: ['session', 'day', 'always'].includes(settings.main_quote_frequency) ? settings.main_quote_frequency : 'session'
-    }
+    popup: { delay: settings.delay, frequency: settings.frequency, source, deckReset }
   });
 });
 
