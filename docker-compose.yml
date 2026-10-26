@@ -1,11 +1,15 @@
+# First-time setup only. To update the live site without downtime, run ./deploy.sh,
+# which uses the same settings.
 services:
   ayesha:
     build: .
+    image: ayesha-ayesha
     container_name: ayesha-gift
-    ports:
-      - "8081:8080"
+    network_mode: host
+    env_file: .env
     environment:
-      PORT: 8080
+      HOST: "::"
+      PORT: 8081
       DATABASE_PATH: /app/data/ayesha.sqlite
     volumes:
       - ./data:/app/data

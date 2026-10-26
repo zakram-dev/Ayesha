@@ -63,6 +63,12 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reviewed_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS auth_sessions (
+    token_hash TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('admin', 'private')),
+    expires_at INTEGER NOT NULL
+  );
 `);
 
 const messageColumns = db.prepare('PRAGMA table_info(visitor_messages)').all();

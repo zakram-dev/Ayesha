@@ -1,34 +1,34 @@
 require('dotenv').config();
 
 const crypto = require('node:crypto');
+const http = require('node:http');
+const path = require('node:path');
 const express = require('express');
 const db = require('./database');
 
 const app = express();
 const port = Number(process.env.PORT) || 8080;
+const host = process.env.HOST || '0.0.0.0';
 const adminPassword = process.env.ADMIN_PASSWORD;
 const sessionSecret = process.env.SESSION_SECRET;
-const sessions = new Map();
 const messageSubmissionTimes = new Map();
-const privateAccessSessions = new Map();
 const privateUnlockAttempts = new Map();
+const adminLoginAttempts = new Map();
+const adminSessionMs = 8 * 60 * 60 * 1000;
+const privateSessionMs = 30 * 60 * 1000;
+const adminLoginWindowMs = 15 * 60 * 1000;
+const adminLoginMaxFailures = 5;
 
 if (!adminPassword || !sessionSecret) {
   throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
 }
 
 app.use(express.json({ limit: '32kb' }));
-app.use((req, res, next) => {
-  const blockedPath = /^\/(?:data|node_modules)(?:\/|$)/.test(req.path)
-    || /^\/(?:server|database|package(?:-lock)?)\.(?:js|json)$/.test(req.path);
-
-  if (blockedPath) return res.sendStatus(404);
-  next();
-});
-app.use(express.static(__dirname));
+// Only files inside public/ are reachable; source, .git, .env and data stay private.
+app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'deny' }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, revision: process.env.APP_REVISION || null });
 });
 
 app.post('/api/events', (req, res) => {
@@ -96,14 +96,33 @@ function privatePasswordHash() {
   return db.prepare("SELECT value FROM settings WHERE key = 'private_section_password_hash'").get()?.value || '';
 }
 
+function readCookie(req, name) {
+  return req.headers.cookie?.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`))?.[1] || null;
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// Sessions live in SQLite so they survive restarts and are shared while two containers overlap during a deploy.
+function createSession(kind, durationMs) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = Date.now();
+  db.prepare('DELETE FROM auth_sessions WHERE expires_at <= ?').run(now);
+  db.prepare('INSERT INTO auth_sessions (token_hash, kind, expires_at) VALUES (?, ?, ?)')
+    .run(hashToken(token), kind, now + durationMs);
+  return token;
+}
+
+function hasSession(req, cookieName, kind) {
+  const token = readCookie(req, cookieName);
+  if (!token) return false;
+  return Boolean(db.prepare('SELECT 1 FROM auth_sessions WHERE token_hash = ? AND kind = ? AND expires_at > ?')
+    .get(hashToken(token), kind, Date.now()));
+}
+
 function hasPrivateAccess(req) {
-  const token = req.headers.cookie?.match(/(?:^|;\s*)ayesha_private=([^;]+)/)?.[1];
-  const expiresAt = token && privateAccessSessions.get(token);
-  if (!expiresAt || expiresAt < Date.now()) {
-    if (token) privateAccessSessions.delete(token);
-    return false;
-  }
-  return true;
+  return hasSession(req, 'ayesha_private', 'private');
 }
 
 app.post('/api/private-section/unlock', (req, res) => {
@@ -121,8 +140,7 @@ app.post('/api/private-section/unlock', (req, res) => {
   if (!verifyPrivatePassword(password, privatePasswordHash())) {
     return res.status(401).json({ error: 'That password is not correct.' });
   }
-  const token = crypto.randomBytes(32).toString('hex');
-  privateAccessSessions.set(token, now + 30 * 60 * 1000);
+  const token = createSession('private', privateSessionMs);
   res.setHeader('Set-Cookie', `ayesha_private=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=1800`);
   res.json({ ok: true });
 });
@@ -161,22 +179,14 @@ app.post('/api/messages', (req, res) => {
 });
 
 function safeCompare(left, right) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function createSession() {
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, Date.now() + 8 * 60 * 60 * 1000);
-  return token;
+  // Hashing first keeps the comparison constant-time without revealing the password length.
+  const leftHash = crypto.createHash('sha256').update(left).digest();
+  const rightHash = crypto.createHash('sha256').update(right).digest();
+  return crypto.timingSafeEqual(leftHash, rightHash);
 }
 
 function requireAdmin(req, res, next) {
-  const token = req.headers.cookie?.match(/(?:^|;\s*)ayesha_admin=([^;]+)/)?.[1];
-  const expiresAt = token && sessions.get(token);
-  if (!expiresAt || expiresAt < Date.now()) {
-    if (token) sessions.delete(token);
+  if (!hasSession(req, 'ayesha_admin', 'admin')) {
     return res.status(401).json({ error: 'Admin authentication required.' });
   }
   next();
@@ -198,17 +208,30 @@ function parseBoolean(value, fallback = false) {
 }
 
 app.post('/api/admin/login', (req, res) => {
-  const password = typeof req.body?.password === 'string' ? req.body.password : '';
-  if (!safeCompare(password, adminPassword)) return res.status(401).json({ error: 'Invalid password.' });
+  const ip = req.get('CF-Connecting-IP') || req.ip || 'unknown';
+  const now = Date.now();
+  const attempt = adminLoginAttempts.get(ip);
+  const windowActive = attempt && now - attempt.startedAt < adminLoginWindowMs;
+  if (windowActive && attempt.failures >= adminLoginMaxFailures) {
+    return res.status(429).json({ error: 'Too many failed sign-in attempts. Please try again in 15 minutes.' });
+  }
 
-  const token = createSession();
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!safeCompare(password, adminPassword)) {
+    adminLoginAttempts.set(ip, windowActive
+      ? { ...attempt, failures: attempt.failures + 1 }
+      : { failures: 1, startedAt: now });
+    return res.status(401).json({ error: 'Invalid password.' });
+  }
+
+  adminLoginAttempts.delete(ip);
+  const token = createSession('admin', adminSessionMs);
   res.setHeader('Set-Cookie', `ayesha_admin=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
   res.json({ ok: true });
 });
 
 app.post('/api/admin/logout', requireAdmin, (req, res) => {
-  const token = req.headers.cookie?.match(/(?:^|;\s*)ayesha_admin=([^;]+)/)?.[1];
-  sessions.delete(token);
+  db.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').run(hashToken(readCookie(req, 'ayesha_admin')));
   res.setHeader('Set-Cookie', 'ayesha_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
   res.json({ ok: true });
 });
@@ -289,7 +312,7 @@ app.put('/api/admin/private-section/password', requireAdmin, (req, res) => {
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
     `).run('private_section_password_hash', hashPrivatePassword(password));
-    privateAccessSessions.clear();
+    db.prepare("DELETE FROM auth_sessions WHERE kind = 'private'").run();
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -521,6 +544,31 @@ app.get('/api/quotes/main', (req, res) => {
   });
 });
 
-app.listen(port, '0.0.0.0', () => {
+// On Linux, reusePort lets the next container bind the same port while the current one
+// still serves, so deploy.sh can swap them without dropping requests.
+const server = http.createServer(app);
+const listenOptions = { port, host, reusePort: process.platform === 'linux' };
+let waitingForPort = false;
+
+server.on('listening', () => {
   console.log(`Ayesha gift server running at http://localhost:${port}`);
 });
+server.on('error', error => {
+  if (error.code !== 'EADDRINUSE') throw error;
+  if (!waitingForPort) console.log(`Port ${port} is in use; waiting for it to be released...`);
+  waitingForPort = true;
+  setTimeout(() => server.listen(listenOptions), 25);
+});
+server.listen(listenOptions);
+
+function shutdown(signal) {
+  console.log(`${signal} received; finishing open requests before exiting.`);
+  server.close(() => {
+    db.close();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 8000).unref();
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

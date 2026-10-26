@@ -1,0 +1,11 @@
+.git
+.gitignore
+.dockerignore
+.DS_Store
+.env
+.env.example
+node_modules
+data
+Dockerfile
+docker-compose.yml
+deploy.sh
