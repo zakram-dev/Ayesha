@@ -320,6 +320,52 @@ function renderInsights() {
   document.querySelector('#top-mood').textContent = favoriteMood;
 }
 
+const themeToggle = document.querySelector('#theme-toggle');
+const greeting = document.querySelector('#greeting');
+const artNote = document.querySelector('#art-note');
+const nightSky = document.querySelector('#night-sky');
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function greetingFor(hour) {
+  if (hour >= 5 && hour < 12) return 'good morning, ayesha';
+  if (hour >= 12 && hour < 17) return 'a little afternoon hello';
+  if (hour >= 17 && hour < 19) return 'good evening, ayesha';
+  return 'a soft corner for late nights';
+}
+
+function renderTheme(theme) {
+  const night = theme === 'night';
+  themeToggle.textContent = night ? '☼' : '☾';
+  themeToggle.setAttribute('aria-label', night ? 'Switch to day mode' : 'Switch to night mode');
+  themeToggle.setAttribute('aria-pressed', String(night));
+  greeting.textContent = greetingFor(new Date().getHours());
+  artNote.innerHTML = night ? 'some things<br /><em>glow</em> at night' : 'some things are<br /><em>lovely</em> just because';
+}
+
+function scatterStars(count = 70) {
+  const stars = document.createDocumentFragment();
+  for (let index = 0; index < count; index += 1) {
+    const star = document.createElement('span');
+    const size = [1.5, 2, 2, 3][Math.floor(Math.random() * 4)];
+    star.className = 'star';
+    star.style.cssText = `top:${(Math.random() * 100).toFixed(2)}%;left:${(Math.random() * 100).toFixed(2)}%;`
+      + `width:${size}px;height:${size}px;animation-delay:${(Math.random() * 5).toFixed(2)}s;animation-duration:${(3 + Math.random() * 4).toFixed(2)}s`;
+    stars.append(star);
+  }
+  nightSky.append(stars);
+}
+
+themeToggle.addEventListener('click', () => {
+  const switchTheme = () => renderTheme(window.ayeshaTheme.toggle());
+  if (document.startViewTransition && !reducedMotion.matches) document.startViewTransition(switchTheme);
+  else switchTheme();
+});
+
+scatterStars();
+renderTheme(window.ayeshaTheme.current());
+// Follow the clock while the page stays open, e.g. turn to night at 7pm.
+window.setInterval(() => renderTheme(window.ayeshaTheme.apply()), 60 * 1000);
+
 if (new URLSearchParams(window.location.search).has('insights')) {
   const insights = document.querySelector('#insights');
   insights.hidden = false;
