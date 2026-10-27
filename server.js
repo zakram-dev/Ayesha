@@ -30,16 +30,17 @@ if (!adminPassword || !sessionSecret) {
   throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
 }
 
-// Browser security headers on every response. The pages only run their own scripts and styles (plus Google Fonts),
-// can't be shown inside another site, and only this site may use the microphone (for the mailbox voice notes).
+// Browser security headers on every response. The pages only run their own scripts and styles (plus Google Fonts and
+// the visitor-stats beacon Cloudflare adds to the page), can't be shown inside another site, and only this site may
+// use the microphone (for the mailbox voice notes).
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' https://static.cloudflareinsights.com",
   "style-src 'self' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data:",
   "media-src 'self' blob:",
-  "connect-src 'self'",
+  "connect-src 'self' https://cloudflareinsights.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
