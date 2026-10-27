@@ -409,15 +409,21 @@ window.addEventListener('mailbox:unread', event => {
 new MutationObserver(() => { if (bunnyHasMail) bunnyBubble.textContent = bunnyMailLine(); })
   .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-bunny.addEventListener('click', () => {
-  if (bunnyHasMail) return openMailboxFromBunny();
-  replayClass(bunny, 'hop');
+// The bunny says something in its bubble for a few seconds (never over a waiting letter).
+function bunnySay(line, ms = 3600) {
+  if (bunny.hidden || bunnyHasMail) return;
   bunnyBubble.classList.remove('mail');
-  bunnyBubble.textContent = nextBunnyLine();
+  bunnyBubble.textContent = line;
   bunnyBubble.hidden = false;
   replayClass(bunnyBubble, 'pop');
   window.clearTimeout(bunnyBubbleTimer);
-  bunnyBubbleTimer = window.setTimeout(() => { bunnyBubble.hidden = true; }, 2800);
+  bunnyBubbleTimer = window.setTimeout(() => { bunnyBubble.hidden = true; }, ms);
+}
+
+bunny.addEventListener('click', () => {
+  if (bunnyHasMail) return openMailboxFromBunny();
+  replayClass(bunny, 'hop');
+  bunnySay(nextBunnyLine(), 2800);
 });
 bunnyBubble.addEventListener('click', () => { if (bunnyHasMail) openMailboxFromBunny(); });
 
@@ -426,6 +432,7 @@ fetch('/api/bunny').then(response => (response.ok ? response.json() : null)).the
   bunnyLines = settings.lines;
   bunny.hidden = false;
   showBunnyMail();
+  refreshWardrobe();
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12 && document.documentElement.dataset.theme !== 'night') {
     window.setTimeout(() => { if (!bunnyHasMail) replayClass(bunny, 'waving'); }, 900);
@@ -495,6 +502,8 @@ function revealFlowerSecret() {
   }
   window.clearTimeout(flowerSecretTimer);
   flowerSecretTimer = window.setTimeout(hideFlowerSecret, 9000);
+  // Finding the secret unlocks the bunny's star clip; let her read the card first.
+  window.setTimeout(refreshWardrobe, 2500);
 }
 
 flower.addEventListener('click', () => {
@@ -518,6 +527,152 @@ document.querySelector('#flower-secret-close').addEventListener('click', hideFlo
 fetch('/api/flower').then(response => (response.ok ? response.json() : null)).then(settings => {
   if (settings) flowerSettings = settings;
 }).catch(error => console.warn('Unable to load the flower secret.', error));
+
+// ---- Bunny wardrobe: she dresses the bunny up; some pieces unlock with visits or the flower secret. ----
+// All of it lives in her own browser: the outfit, how many days she has visited, and which pieces she has seen.
+const wardrobeItems = [
+  { id: 'bow', slot: 'head', icon: '🎀', name: 'pink bow' },
+  { id: 'glasses', slot: 'face', icon: '👓', name: 'round glasses' },
+  { id: 'scarf', slot: 'neck', icon: '🧣', name: 'cozy scarf' },
+  { id: 'flowers', slot: 'head', icon: '🌸', name: 'flower crown', days: 3 },
+  { id: 'crown', slot: 'head', icon: '👑', name: 'little crown', days: 7 },
+  { id: 'star', slot: 'ear', icon: '⭐', name: 'star clip', secret: true }
+];
+const wardrobeSlots = ['head', 'ear', 'face', 'neck'];
+const outfitKey = 'ayesha-bunny-outfit';
+const visitDaysKey = 'ayesha-bunny-visit-days';
+const seenItemsKey = 'ayesha-bunny-seen-items';
+const wardrobe = document.querySelector('#wardrobe');
+const wardrobeToggle = document.querySelector('#wardrobe-toggle');
+const wardrobeNote = document.querySelector('#wardrobe-note');
+
+function readStored(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key)) ?? fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    // Without storage the bunny simply forgets between visits.
+  }
+}
+
+// Counts the different days she has visited, by her own calendar.
+function countVisitDay() {
+  const today = new Date().toLocaleDateString('en-CA');
+  const record = readStored(visitDaysKey, { count: 0, last: '' });
+  if (record.last !== today) {
+    record.count = (Number(record.count) || 0) + 1;
+    record.last = today;
+    writeStored(visitDaysKey, record);
+  }
+  return record.count;
+}
+
+const visitDays = countVisitDay();
+
+function isUnlocked(item) {
+  if (item.days) return visitDays >= item.days;
+  if (item.secret) return flowerSecretFound();
+  return true;
+}
+
+function unlockHint(item) {
+  if (item.days) return `unlocks after visiting on ${item.days} different days (${Math.min(visitDays, item.days)} so far) ♡`;
+  return "unlocks when you find the flower's secret ✿";
+}
+
+function currentOutfit() {
+  const saved = readStored(outfitKey, {});
+  return Object.fromEntries(wardrobeSlots.map(slot => {
+    const item = wardrobeItems.find(entry => entry.slot === slot && entry.id === saved?.[slot]);
+    return [slot, item && isUnlocked(item) ? item.id : ''];
+  }));
+}
+
+function applyOutfit(outfit) {
+  wardrobeSlots.forEach(slot => {
+    if (outfit[slot]) bunny.dataset[slot] = outfit[slot];
+    else delete bunny.dataset[slot];
+  });
+}
+
+function unseenItems() {
+  const seen = readStored(seenItemsKey, []);
+  return wardrobeItems.filter(item => isUnlocked(item) && !seen.includes(item.id));
+}
+
+function renderWardrobe() {
+  const outfit = currentOutfit();
+  const unseen = unseenItems().map(item => item.id);
+  document.querySelector('#wardrobe-items').innerHTML = wardrobeItems.map(item => {
+    const unlocked = isUnlocked(item);
+    return `<button class="wardrobe-item${unlocked ? '' : ' locked'}${unseen.includes(item.id) ? ' is-new' : ''}" type="button"
+      data-item="${item.id}" aria-pressed="${outfit[item.slot] === item.id}" aria-label="${item.name}${unlocked ? '' : ' (locked)'}"
+      title="${item.name}"><span>${item.icon}</span></button>`;
+  }).join('');
+  document.querySelector('#wardrobe-new').hidden = !unseen.length;
+}
+
+// Runs once the bunny appears and again when something unlocks: wears her outfit and mentions new pieces once.
+function refreshWardrobe() {
+  if (bunny.hidden) return;
+  wardrobeToggle.hidden = false;
+  applyOutfit(currentOutfit());
+  renderWardrobe();
+  const unseen = unseenItems();
+  if (!unseen.length || !wardrobe.hidden) return;
+  const firstTime = readStored(seenItemsKey, null) === null;
+  bunnySay(firstTime ? 'psst… you can dress me up now 🎀' : `✨ new outfit for me: ${unseen[unseen.length - 1].name}!`);
+}
+
+function openWardrobe() {
+  renderWardrobe();
+  wardrobeNote.textContent = 'tap to put on or take off ♡';
+  wardrobe.hidden = false;
+  wardrobeToggle.setAttribute('aria-expanded', 'true');
+  if (!bunnyHasMail) bunnyBubble.hidden = true;
+  writeStored(seenItemsKey, wardrobeItems.filter(isUnlocked).map(item => item.id));
+  document.querySelector('#wardrobe-new').hidden = true;
+}
+
+function closeWardrobe() {
+  wardrobe.hidden = true;
+  wardrobeToggle.setAttribute('aria-expanded', 'false');
+}
+
+wardrobeToggle.addEventListener('click', () => (wardrobe.hidden ? openWardrobe() : closeWardrobe()));
+document.querySelector('#wardrobe-done').addEventListener('click', closeWardrobe);
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && !wardrobe.hidden) closeWardrobe(); });
+
+document.querySelector('#wardrobe-items').addEventListener('click', event => {
+  const button = event.target.closest('.wardrobe-item');
+  if (!button) return;
+  const item = wardrobeItems.find(entry => entry.id === button.dataset.item);
+  if (!isUnlocked(item)) {
+    wardrobeNote.textContent = `${item.icon} ${unlockHint(item)}`;
+    return;
+  }
+  const outfit = currentOutfit();
+  outfit[item.slot] = outfit[item.slot] === item.id ? '' : item.id;
+  writeStored(outfitKey, outfit);
+  applyOutfit(outfit);
+  replayClass(bunny, 'hop');
+  // Only one piece per spot: update every button so a swapped-out piece un-highlights.
+  document.querySelectorAll('.wardrobe-item').forEach(other => {
+    const otherItem = wardrobeItems.find(entry => entry.id === other.dataset.item);
+    other.setAttribute('aria-pressed', String(outfit[otherItem.slot] === otherItem.id));
+  });
+  const halloweenHat = season === 'halloween' && item.slot === 'head' && outfit.head;
+  wardrobeNote.textContent = halloweenHat
+    ? `${item.icon} saved for after halloween, the witch hat is on today 🎃`
+    : `${item.icon} ${item.name} ${outfit[item.slot] ? 'on ♡' : 'off'}`;
+});
 
 if (new URLSearchParams(window.location.search).has('insights')) {
   const insights = document.querySelector('#insights');
