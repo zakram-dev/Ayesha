@@ -323,6 +323,26 @@ renderTheme(window.ayeshaTheme.current());
 // Follow the clock while the page stays open, e.g. turn to night at 7pm.
 window.setInterval(() => renderTheme(window.ayeshaTheme.apply()), 60 * 1000);
 
+// ---- Seasonal outfits: the bunny dresses up on special days, by her own calendar. ----
+// Add ?season=halloween to the address to preview a costume early (or ?season=none to hide it).
+const seasonalBunnyLines = {
+  halloween: {
+    day: ['boo! ♡', 'trick or treat?', 'happy halloween, ayesha', 'i dressed up just for you'],
+    night: ['zzz… boo…', 'dreaming of pumpkins…', 'shh… the bats are out']
+  }
+};
+
+function seasonFor(date) {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  if ((month === 10 && day >= 30) || (month === 11 && day === 1)) return 'halloween';
+  return '';
+}
+
+const previewSeason = new URLSearchParams(window.location.search).get('season');
+const season = previewSeason === 'none' ? '' : (seasonalBunnyLines[previewSeason] ? previewSeason : seasonFor(new Date()));
+if (season) document.documentElement.dataset.season = season;
+
 // ---- Sleepy bunny: its pose follows the day/night theme in CSS; tapping it hops and says something sweet. ----
 const bunny = document.querySelector('#bunny');
 const bunnyBubble = document.querySelector('#bunny-bubble');
@@ -339,7 +359,9 @@ function replayClass(element, className) {
 }
 
 function nextBunnyLine() {
-  const lines = document.documentElement.dataset.theme === 'night' ? sleepyBunnyLines : bunnyLines;
+  const night = document.documentElement.dataset.theme === 'night';
+  const seasonal = seasonalBunnyLines[season]?.[night ? 'night' : 'day'] || [];
+  const lines = [...(night ? sleepyBunnyLines : bunnyLines), ...seasonal];
   const choices = lines.length > 1 ? lines.filter(line => line !== lastBunnyLine) : lines;
   lastBunnyLine = choices[Math.floor(Math.random() * choices.length)];
   return lastBunnyLine;
