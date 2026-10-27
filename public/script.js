@@ -361,7 +361,7 @@ function replayClass(element, className) {
 function nextBunnyLine() {
   const night = document.documentElement.dataset.theme === 'night';
   const seasonal = seasonalBunnyLines[season]?.[night ? 'night' : 'day'] || [];
-  const lines = [...(night ? sleepyBunnyLines : bunnyLines), ...seasonal];
+  const lines = [...(night ? sleepyBunnyLines : [...bunnyLines, ...flowerHintLines()]), ...seasonal];
   const choices = lines.length > 1 ? lines.filter(line => line !== lastBunnyLine) : lines;
   lastBunnyLine = choices[Math.floor(Math.random() * choices.length)];
   return lastBunnyLine;
@@ -431,6 +431,93 @@ fetch('/api/bunny').then(response => (response.ok ? response.json() : null)).the
     window.setTimeout(() => { if (!bunnyHasMail) replayClass(bunny, 'waving'); }, 900);
   }
 }).catch(error => console.warn('Unable to load the bunny.', error));
+
+// ---- Tap the flower: each tap blooms it a little more and drifts petals down; 7 quick taps reveal a secret. ----
+const flower = document.querySelector('#flower');
+const petalFall = document.querySelector('#petal-fall');
+const flowerSecret = document.querySelector('#flower-secret');
+const flowerSecretFoundKey = 'ayesha-flower-secret-found';
+const tapsForSecret = 7;
+const tapSeriesGapMs = 2500;
+let flowerSettings = { enabled: false, message: '' };
+let flowerTaps = 0;
+let lastFlowerTap = 0;
+let flowerRestTimer = null;
+let flowerSecretTimer = null;
+
+function flowerSecretFound() {
+  try {
+    return localStorage.getItem(flowerSecretFoundKey) === 'yes';
+  } catch (error) {
+    return false;
+  }
+}
+
+// Until she finds the secret, the bunny sometimes gives a hint.
+function flowerHintLines() {
+  return flowerSettings.enabled && !flowerSecretFound() ? ['psst… tap the big flower ✿'] : [];
+}
+
+// Petals start around the middle of the flower and drift down past the bottom of the arch, each a bit different.
+function dropPetals(count) {
+  if (reducedMotion.matches) return;
+  const art = flower.parentElement.getBoundingClientRect();
+  const bloom = flower.getBoundingClientRect();
+  const originX = bloom.left + bloom.width / 2 - art.left;
+  const originY = bloom.top + bloom.height / 2 - art.top;
+  for (let index = 0; index < count && petalFall.childElementCount < 45; index += 1) {
+    const petal = document.createElement('span');
+    const size = 9 + Math.random() * 7;
+    petal.className = 'falling-petal';
+    petal.style.cssText = `left:${(originX + (Math.random() - 0.5) * 140).toFixed(1)}px;top:${(originY + (Math.random() - 0.5) * 70).toFixed(1)}px;`
+      + `width:${size.toFixed(1)}px;height:${(size * 1.35).toFixed(1)}px;`
+      + `--dx:${Math.round((Math.random() - 0.5) * 240)}px;--dy:${Math.round(art.height - originY + 30)}px;--spin:${Math.round((Math.random() - 0.5) * 540)}deg;`
+      + `animation-duration:${(1.8 + Math.random() * 1.4).toFixed(2)}s;animation-delay:${(Math.random() * 0.15).toFixed(2)}s`;
+    petal.addEventListener('animationend', () => petal.remove());
+    petalFall.append(petal);
+  }
+}
+
+function hideFlowerSecret() {
+  window.clearTimeout(flowerSecretTimer);
+  flowerSecret.hidden = true;
+}
+
+function revealFlowerSecret() {
+  document.querySelector('#flower-secret-text').textContent = flowerSettings.message;
+  flowerSecret.hidden = false;
+  replayClass(flowerSecret, 'pop');
+  dropPetals(18);
+  try {
+    localStorage.setItem(flowerSecretFoundKey, 'yes');
+  } catch (error) {
+    // Without storage the bunny just keeps hinting; nothing else changes.
+  }
+  window.clearTimeout(flowerSecretTimer);
+  flowerSecretTimer = window.setTimeout(hideFlowerSecret, 9000);
+}
+
+flower.addEventListener('click', () => {
+  const now = Date.now();
+  // Taps count as one series while they come within 2.5 seconds of each other.
+  flowerTaps = now - lastFlowerTap > tapSeriesGapMs ? 1 : flowerTaps + 1;
+  lastFlowerTap = now;
+  flower.style.setProperty('--grow', String(1 + Math.min(flowerTaps, tapsForSecret) * 0.025));
+  replayClass(flower, 'tapped');
+  dropPetals(4);
+  if (flowerTaps >= tapsForSecret && flowerSettings.enabled && flowerSettings.message) {
+    flowerTaps = 0;
+    revealFlowerSecret();
+  }
+  // Settle back to its normal size once the taps stop.
+  window.clearTimeout(flowerRestTimer);
+  flowerRestTimer = window.setTimeout(() => flower.style.setProperty('--grow', '1'), tapSeriesGapMs);
+});
+document.querySelector('#flower-secret-close').addEventListener('click', hideFlowerSecret);
+
+fetch('/api/flower').then(response => (response.ok ? response.json() : null)).then(settings => {
+  if (settings) flowerSettings = settings;
+}).catch(error => console.warn('Unable to load the flower secret.', error));
 
 if (new URLSearchParams(window.location.search).has('insights')) {
   const insights = document.querySelector('#insights');

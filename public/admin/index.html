@@ -88,6 +88,15 @@
             </form>
           </section>
           <section class="panel">
+            <div class="section-header"><h2>Tap the flower</h2></div>
+            <p class="setting-hint">Every tap on the big flower makes it bloom and drops a few petals. Seven quick taps reveal this secret in a little card. Until she finds it, the bunny sometimes hints "tap the big flower".</p>
+            <form class="settings-form bunny-form" id="flower-form">
+              <label class="checkbox wide"><input id="flower-enabled" type="checkbox" /> Hide a secret message in the flower</label>
+              <label class="wide">Secret message (up to 160 characters) <textarea id="flower-message" rows="3" maxlength="160"></textarea></label>
+              <button class="button" type="submit">Save secret</button>
+            </form>
+          </section>
+          <section class="panel">
             <div class="section-header"><h2>Main quote popup</h2></div>
             <form class="settings-form popup-settings-form" id="settings-form">
               <label class="checkbox wide"><input id="popup-enabled" type="checkbox" /> Show popup on public page</label>
@@ -194,6 +203,6 @@
       </div>
     </div>
     <script src="/voice-kit.js?v=voice-notes"></script>
-    <script src="/admin/admin.js?v=bunny"></script>
+    <script src="/admin/admin.js?v=flower"></script>
   </body>
 </html>

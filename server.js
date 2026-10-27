@@ -552,6 +552,32 @@ app.put('/api/admin/bunny', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- Tap the flower: seven quick taps on the big flower reveal a secret message set in admin. ----
+
+function readFlowerSecret() {
+  return { enabled: readSetting('flower_secret_enabled') === '1', message: readSetting('flower_secret_message') };
+}
+
+app.get('/api/flower', (req, res) => {
+  res.json(readFlowerSecret());
+});
+
+app.get('/api/admin/flower', requireAdmin, (req, res) => {
+  res.json(readFlowerSecret());
+});
+
+app.put('/api/admin/flower', requireAdmin, (req, res) => {
+  try {
+    const enabled = Boolean(req.body?.enabled);
+    const message = cleanText(req.body?.message ?? '', 'Secret message', { required: enabled, maxLength: 160 }) || '';
+    saveSetting.run('flower_secret_enabled', enabled ? '1' : '0');
+    saveSetting.run('flower_secret_message', message);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 const popupQuoteQuery = `
   SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
   FROM quotes q

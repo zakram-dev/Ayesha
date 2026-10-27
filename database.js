@@ -191,6 +191,14 @@ db.prepare(`
   ON CONFLICT(key) DO NOTHING
 `).run();
 
+// Tap the flower: seven quick taps reveal this message (on by default).
+db.prepare(`
+  INSERT INTO settings (key, value)
+  VALUES ('flower_secret_enabled', '1'),
+    ('flower_secret_message', 'you found the secret ♡ every petal here is a little reason I''m glad you exist.')
+  ON CONFLICT(key) DO NOTHING
+`).run();
+
 // The announcement bar starts switched off, with a suggested first message ready in admin.
 db.prepare(`
   INSERT INTO settings (key, value)

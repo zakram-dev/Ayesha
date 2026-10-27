@@ -230,14 +230,16 @@ document.querySelector('#voice-password-form').addEventListener('submit', async 
 document.querySelector('#voice-refresh').addEventListener('click', loadVoiceThread);
 
 async function loadData() {
-  const [dashboard, settings, loadedCategories, loadedQuotes, announcement, bunny] = await Promise.all([
+  const [dashboard, settings, loadedCategories, loadedQuotes, announcement, bunny, flowerSecret] = await Promise.all([
     request('/api/admin/dashboard'), request('/api/admin/settings'),
     request('/api/admin/categories'), request('/api/admin/quotes'), request('/api/admin/announcement'),
-    request('/api/admin/bunny')
+    request('/api/admin/bunny'), request('/api/admin/flower')
   ]);
   renderAnnouncement(announcement);
   document.querySelector('#bunny-enabled').checked = bunny.enabled;
   document.querySelector('#bunny-lines').value = bunny.lines.join('\n');
+  document.querySelector('#flower-enabled').checked = flowerSecret.enabled;
+  document.querySelector('#flower-message').value = flowerSecret.message;
   categories = loadedCategories;
   quotes = loadedQuotes;
   popupSettings = settings;
@@ -463,6 +465,19 @@ document.querySelector('#bunny-form').addEventListener('submit', async event => 
     }) });
     await loadData();
     showStatus('Bunny saved ✦');
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+});
+document.querySelector('#flower-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    await request('/api/admin/flower', { method: 'PUT', body: JSON.stringify({
+      enabled: document.querySelector('#flower-enabled').checked,
+      message: document.querySelector('#flower-message').value
+    }) });
+    await loadData();
+    showStatus('Flower secret saved ✿');
   } catch (error) {
     showStatus(error.message, true);
   }
