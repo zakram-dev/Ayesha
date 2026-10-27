@@ -394,10 +394,14 @@ function showBunnyMail() {
   } else if (hadMail) {
     bunnyBubble.classList.remove('mail');
     bunnyBubble.hidden = true;
+    // Once she has read the letter, mention anything it unlocked (like the balloon).
+    refreshWardrobe();
   }
 }
 
 function openMailboxFromBunny() {
+  // Opening a letter the bunny brought unlocks its heart balloon.
+  writeStored(deliveredKey, true);
   document.querySelector('#open-voice-notes').click();
 }
 
@@ -530,18 +534,28 @@ fetch('/api/flower').then(response => (response.ok ? response.json() : null)).th
 
 // ---- Bunny wardrobe: she dresses the bunny up; some pieces unlock with visits or the flower secret. ----
 // All of it lives in her own browser: the outfit, how many days she has visited, and which pieces she has seen.
+// Listed by spot (head, ear, face, neck, hold); pieces without an unlock rule are there from the start.
 const wardrobeItems = [
   { id: 'bow', slot: 'head', icon: '🎀', name: 'pink bow' },
+  { id: 'flowers', slot: 'head', icon: '🌸', name: 'flower crown', unlock: { days: 3 } },
+  { id: 'crown', slot: 'head', icon: '👑', name: 'little crown', unlock: { days: 7 } },
+  { id: 'sunhat', slot: 'head', icon: '👒', name: 'sun hat', unlock: { days: 10 } },
+  { id: 'nightcap', slot: 'head', icon: '🌙', name: 'sleepy nightcap', unlock: { nightOwl: true } },
+  { id: 'heartclip', slot: 'ear', icon: '💗', name: 'heart clip' },
+  { id: 'star', slot: 'ear', icon: '⭐', name: 'star clip', unlock: { secret: true } },
   { id: 'glasses', slot: 'face', icon: '👓', name: 'round glasses' },
+  { id: 'sunglasses', slot: 'face', icon: '🕶️', name: 'heart sunglasses', unlock: { days: 5 } },
   { id: 'scarf', slot: 'neck', icon: '🧣', name: 'cozy scarf' },
-  { id: 'flowers', slot: 'head', icon: '🌸', name: 'flower crown', days: 3 },
-  { id: 'crown', slot: 'head', icon: '👑', name: 'little crown', days: 7 },
-  { id: 'star', slot: 'ear', icon: '⭐', name: 'star clip', secret: true }
+  { id: 'bell', slot: 'neck', icon: '🔔', name: 'bell collar' },
+  { id: 'locket', slot: 'neck', icon: '💝', name: 'heart locket', unlock: { days: 14 } },
+  { id: 'balloon', slot: 'hold', icon: '🎈', name: 'heart balloon', unlock: { delivered: true } }
 ];
-const wardrobeSlots = ['head', 'ear', 'face', 'neck'];
+const wardrobeSlots = ['head', 'ear', 'face', 'neck', 'hold'];
 const outfitKey = 'ayesha-bunny-outfit';
 const visitDaysKey = 'ayesha-bunny-visit-days';
 const seenItemsKey = 'ayesha-bunny-seen-items';
+const nightOwlKey = 'ayesha-bunny-night-owl';
+const deliveredKey = 'ayesha-bunny-delivered';
 const wardrobe = document.querySelector('#wardrobe');
 const wardrobeToggle = document.querySelector('#wardrobe-toggle');
 const wardrobeNote = document.querySelector('#wardrobe-note');
@@ -575,16 +589,24 @@ function countVisitDay() {
 }
 
 const visitDays = countVisitDay();
+// A visit between midnight and 5am unlocks the nightcap.
+if (new Date().getHours() < 5) writeStored(nightOwlKey, true);
 
 function isUnlocked(item) {
-  if (item.days) return visitDays >= item.days;
-  if (item.secret) return flowerSecretFound();
+  const unlock = item.unlock || {};
+  if (unlock.days) return visitDays >= unlock.days;
+  if (unlock.secret) return flowerSecretFound();
+  if (unlock.nightOwl) return readStored(nightOwlKey, false) === true;
+  if (unlock.delivered) return readStored(deliveredKey, false) === true;
   return true;
 }
 
 function unlockHint(item) {
-  if (item.days) return `unlocks after visiting on ${item.days} different days (${Math.min(visitDays, item.days)} so far) ♡`;
-  return "unlocks when you find the flower's secret ✿";
+  const unlock = item.unlock || {};
+  if (unlock.days) return `unlocks after visiting on ${unlock.days} different days (${Math.min(visitDays, unlock.days)} so far) ♡`;
+  if (unlock.secret) return "unlocks when you find the flower's secret ✿";
+  if (unlock.nightOwl) return 'unlocks when you visit me after midnight 🌙';
+  return 'unlocks when I bring you a letter and you open it ✉️';
 }
 
 function currentOutfit() {

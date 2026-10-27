@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=wardrobe" />
+    <link rel="stylesheet" href="styles.css?v=wardrobe-2" />
   </head>
   <body>
     <div class="announcement" id="announcement" role="region" aria-label="What's new" hidden>
@@ -94,7 +94,7 @@
               <g class="bunny-body">
                 <circle class="bunny-fur" cx="90" cy="103" r="7.5" />
                 <g class="bunny-ear bunny-ear-left"><ellipse class="bunny-fur" cx="49" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="49" cy="30" rx="3.5" ry="14" /></g>
-                <g class="bunny-ear bunny-ear-right"><ellipse class="bunny-fur" cx="71" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="71" cy="30" rx="3.5" ry="14" /><path class="bunny-item item-star" d="M73 33.5l1.3 2.7 3 .4-2.2 2 .6 2.9-2.7-1.4-2.7 1.4.6-2.9-2.2-2 3-.4z" /></g>
+                <g class="bunny-ear bunny-ear-right"><ellipse class="bunny-fur" cx="71" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="71" cy="30" rx="3.5" ry="14" /><path class="bunny-item item-star" d="M73 17.5l1.3 2.7 3 .4-2.2 2 .6 2.9-2.7-1.4-2.7 1.4.6-2.9-2.2-2 3-.4z" /><path class="bunny-item item-heartclip" d="M73 25.6c-2.7-1.9-4.1-3.3-4.1-4.7 0-1.1.9-2 2-2 .9 0 1.6.4 2.1 1.1.5-.7 1.2-1.1 2.1-1.1 1.1 0 2 .9 2 2 0 1.4-1.4 2.8-4.1 4.7z" /></g>
                 <ellipse class="bunny-fur" cx="60" cy="93" rx="29" ry="21" />
                 <circle class="bunny-fur" cx="60" cy="62" r="22" />
                 <g class="bunny-hat">
@@ -123,11 +123,28 @@
                   <circle class="crown-gem" cx="60" cy="41" r="1.8" />
                   <circle class="crown-dot" cx="50.5" cy="34" r="1.3" /><circle class="crown-dot" cx="60" cy="31.5" r="1.3" /><circle class="crown-dot" cx="69.5" cy="34" r="1.3" />
                 </g>
+                <g class="bunny-item bunny-head-item item-sunhat">
+                  <ellipse class="sunhat-brim" cx="60" cy="44" rx="27" ry="6.5" />
+                  <path class="sunhat-dome" d="M46 44C46 33 52 28 60 28S74 33 74 44Z" />
+                  <path class="sunhat-band" d="M46.3 40.5C52 42.4 68 42.4 73.7 40.5L74 44C68 45.8 52 45.8 46 44Z" />
+                  <use href="#mini-flower" x="70" y="41.8" style="color:#fffaf7" />
+                </g>
+                <g class="bunny-item bunny-head-item item-nightcap">
+                  <path class="nightcap-cap" d="M45 44C44 33 53 25 63 26 74 27 82 34 87 45 82 41 78 39 75 44Z" />
+                  <path class="nightcap-band" d="M44.6 41.8C52 44.3 68 44.3 75.4 41.8L75.6 45.6C68 48.2 52 48.2 44.4 45.6Z" />
+                  <circle class="nightcap-pom" cx="87.5" cy="46.5" r="3.6" />
+                  <circle class="nightcap-dot" cx="56" cy="34" r="1" /><circle class="nightcap-dot" cx="66" cy="31.5" r="1" /><circle class="nightcap-dot" cx="73" cy="37" r="1" />
+                </g>
                 <g class="bunny-eyes-open"><ellipse cx="52" cy="61" rx="2.4" ry="3" /><ellipse cx="68" cy="61" rx="2.4" ry="3" /></g>
                 <g class="bunny-eyes-closed"><path d="M48.5 60.5q3.5 3.2 7 0" /><path d="M64.5 60.5q3.5 3.2 7 0" /></g>
                 <g class="bunny-item item-glasses">
                   <circle cx="52" cy="61" r="6" /><circle cx="68" cy="61" r="6" />
                   <path d="M58 60.5q2-1.6 4 0M46 60l-5-1.5M74 60l5-1.5" />
+                </g>
+                <g class="bunny-item item-sunglasses">
+                  <path class="sunglasses-lens" d="M52 66c-4.4-3-6.4-5.2-6.4-7.4 0-1.8 1.4-3.2 3.2-3.2 1.3 0 2.5.7 3.2 1.8.7-1.1 1.9-1.8 3.2-1.8 1.8 0 3.2 1.4 3.2 3.2 0 2.2-2 4.4-6.4 7.4z" />
+                  <path class="sunglasses-lens" d="M68 66c-4.4-3-6.4-5.2-6.4-7.4 0-1.8 1.4-3.2 3.2-3.2 1.3 0 2.5.7 3.2 1.8.7-1.1 1.9-1.8 3.2-1.8 1.8 0 3.2 1.4 3.2 3.2 0 2.2-2 4.4-6.4 7.4z" />
+                  <path class="sunglasses-frame" d="M58.4 59.4q1.6-1.2 3.2 0M45.6 58.6 41 57.2M74.4 58.6 79 57.2" />
                 </g>
                 <circle class="bunny-cheek" cx="46" cy="68" r="4" /><circle class="bunny-cheek" cx="74" cy="68" r="4" />
                 <ellipse class="bunny-nose" cx="60" cy="66.5" rx="2.2" ry="1.6" />
@@ -137,6 +154,15 @@
                   <path class="scarf-band" d="M42.5 75.5C49 82 71 82 77.5 75.5L78.5 81.5C71 88.5 49 88.5 41.5 81.5Z" />
                   <path class="scarf-stripe" d="M70 90.5l5.5-1.3M71 95l5.4-1.3" />
                 </g>
+                <g class="bunny-item item-bell">
+                  <path class="bell-band" d="M43.6 77.6C50 83.2 70 83.2 76.4 77.6L77 80.8C70 86.8 50 86.8 43 80.8Z" />
+                  <circle class="bell-ball" cx="60" cy="86.4" r="3.6" />
+                  <path class="bell-slit" d="M58.4 87.6h3.2" />
+                </g>
+                <g class="bunny-item item-locket">
+                  <path class="locket-chain" d="M43.5 77C50 84 70 84 76.5 77" />
+                  <path class="locket-heart" d="M60 90.6c-3.2-2.2-4.8-3.8-4.8-5.4 0-1.3 1-2.3 2.3-2.3 1 0 1.9.5 2.5 1.3.6-.8 1.5-1.3 2.5-1.3 1.3 0 2.3 1 2.3 2.3 0 1.6-1.6 3.2-4.8 5.4z" />
+                </g>
                 <g class="bunny-letter">
                   <rect x="45" y="88" width="30" height="20" rx="2.5" />
                   <path class="bunny-letter-flap" d="M45.8 89.5 60 99.5 74.2 89.5" />
@@ -144,6 +170,11 @@
                 </g>
                 <ellipse class="bunny-fur" cx="50" cy="110" rx="7" ry="4.5" />
                 <g class="bunny-wave-paw"><ellipse class="bunny-fur" cx="70" cy="110" rx="7" ry="4.5" /></g>
+                <g class="bunny-item item-balloon">
+                  <path class="balloon-string" d="M71 108C79 97 90 89 96 77" />
+                  <path class="balloon-heart" d="M96 77c-8.6-5.8-12.4-10.1-12.4-14.3 0-3.4 2.7-6.1 6.1-6.1 2.6 0 4.9 1.4 6.3 3.5 1.4-2.1 3.7-3.5 6.3-3.5 3.4 0 6.1 2.7 6.1 6.1 0 4.2-3.8 8.5-12.4 14.3z" />
+                  <path class="balloon-shine" d="M88 61.5c1-1.6 2.6-2.4 4.2-2.3" />
+                </g>
               </g>
               <g class="bunny-zzz"><text x="56" y="34">z</text><text x="63" y="22">z</text><text x="70" y="10">z</text></g>
             </svg>
@@ -220,7 +251,7 @@
       </div>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
-    <script src="script.js?v=wardrobe"></script>
+    <script src="script.js?v=wardrobe-2"></script>
     <script src="voice-kit.js?v=voice-notes"></script>
     <script src="voice-notes.js?v=bunny-mail"></script>
   </body>
