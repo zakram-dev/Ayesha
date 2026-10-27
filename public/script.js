@@ -345,22 +345,68 @@ function nextBunnyLine() {
   return lastBunnyLine;
 }
 
+// The bunny brings the mail: while Zohaib's replies are unread, it holds a letter and tapping it opens the mailbox.
+// voice-notes.js reports the unread count (only her signed-in browser can know it).
+let mailboxUnread = 0;
+let bunnyHasMail = false;
+
+function bunnyMailLine() {
+  return document.documentElement.dataset.theme === 'night' ? 'zzz… a letter came for you ♡' : 'psst… you have mail ♡';
+}
+
+function showBunnyMail() {
+  if (bunny.hidden) return;
+  const hadMail = bunnyHasMail;
+  bunnyHasMail = mailboxUnread > 0;
+  bunny.classList.toggle('has-mail', bunnyHasMail);
+  bunny.setAttribute('aria-label', bunnyHasMail ? 'You have mail. Open our mailbox' : 'Say hi to the bunny');
+  window.clearTimeout(bunnyBubbleTimer);
+  if (bunnyHasMail) {
+    bunnyBubble.textContent = bunnyMailLine();
+    bunnyBubble.classList.add('mail');
+    bunnyBubble.hidden = false;
+    if (!hadMail) {
+      replayClass(bunny, 'hop');
+      replayClass(bunnyBubble, 'pop');
+    }
+  } else if (hadMail) {
+    bunnyBubble.classList.remove('mail');
+    bunnyBubble.hidden = true;
+  }
+}
+
+function openMailboxFromBunny() {
+  document.querySelector('#open-voice-notes').click();
+}
+
+window.addEventListener('mailbox:unread', event => {
+  mailboxUnread = event.detail.unread;
+  showBunnyMail();
+});
+// Keep the bubble's wording in step with day and night while a letter is waiting.
+new MutationObserver(() => { if (bunnyHasMail) bunnyBubble.textContent = bunnyMailLine(); })
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
 bunny.addEventListener('click', () => {
+  if (bunnyHasMail) return openMailboxFromBunny();
   replayClass(bunny, 'hop');
+  bunnyBubble.classList.remove('mail');
   bunnyBubble.textContent = nextBunnyLine();
   bunnyBubble.hidden = false;
   replayClass(bunnyBubble, 'pop');
   window.clearTimeout(bunnyBubbleTimer);
   bunnyBubbleTimer = window.setTimeout(() => { bunnyBubble.hidden = true; }, 2800);
 });
+bunnyBubble.addEventListener('click', () => { if (bunnyHasMail) openMailboxFromBunny(); });
 
 fetch('/api/bunny').then(response => (response.ok ? response.json() : null)).then(settings => {
   if (!settings?.enabled || !settings.lines.length) return;
   bunnyLines = settings.lines;
   bunny.hidden = false;
+  showBunnyMail();
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12 && document.documentElement.dataset.theme !== 'night') {
-    window.setTimeout(() => replayClass(bunny, 'waving'), 900);
+    window.setTimeout(() => { if (!bunnyHasMail) replayClass(bunny, 'waving'); }, 900);
   }
 }).catch(error => console.warn('Unable to load the bunny.', error));
 

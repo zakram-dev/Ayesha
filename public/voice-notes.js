@@ -8,6 +8,7 @@
   const badge = document.querySelector('#voice-badge');
   const player = window.VoiceKit.attachPlayer(thread);
   let pollTimer = null;
+  let mailTimer = null;
 
   async function request(url, options = {}) {
     const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
@@ -23,6 +24,25 @@
   function showBadge(unread) {
     badge.hidden = !unread;
     badge.textContent = unread ? `${unread} new` : '';
+    // The bunny listens for this so it can bring the mail.
+    window.dispatchEvent(new CustomEvent('mailbox:unread', { detail: { unread } }));
+  }
+
+  // While the page is open (and the mailbox is closed), look for new replies every 45 seconds.
+  function checkForMail() {
+    if (document.hidden || voiceModal.classList.contains('is-open')) return;
+    request('/api/voice/session').then(session => showBadge(session.unread)).catch(error => {
+      if (error.status === 401) stopMailChecks();
+    });
+  }
+
+  function startMailChecks() {
+    if (!mailTimer) mailTimer = window.setInterval(checkForMail, 45000);
+  }
+
+  function stopMailChecks() {
+    window.clearInterval(mailTimer);
+    mailTimer = null;
   }
 
   async function loadThread() {
@@ -41,6 +61,7 @@
     await loadThread();
     window.clearInterval(pollTimer);
     pollTimer = window.setInterval(() => loadThread().catch(() => {}), 15000);
+    startMailChecks();
   }
 
   function closeVoiceModal() {
@@ -105,6 +126,10 @@
     if (event.key === 'Escape' && voiceModal.classList.contains('is-open')) closeVoiceModal();
   });
 
-  // If her phone is already signed in, show how many new notes are waiting from Zohaib.
-  request('/api/voice/session').then(session => showBadge(session.unread)).catch(() => {});
+  // If her phone is already signed in, show how many new notes are waiting from Zohaib, and keep watching.
+  request('/api/voice/session').then(session => {
+    showBadge(session.unread);
+    startMailChecks();
+  }).catch(() => {});
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && mailTimer) checkForMail(); });
 })();
