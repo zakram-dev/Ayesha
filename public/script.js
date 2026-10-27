@@ -350,6 +350,17 @@ const sleepyBunnyLines = ['zzz…', 'five more minutes…', 'sweet dreams, ayesh
 let bunnyLines = [];
 let lastBunnyLine = '';
 let bunnyBubbleTimer = null;
+let bunnyX = 0; // how far the bunny has hopped from its home spot, in px
+
+// The bubble sits above wherever the bunny is, kept inside the arch, with its tail pointing at the bunny.
+function placeBubble() {
+  if (bunnyBubble.hidden) return;
+  const middle = bunny.offsetLeft + bunnyX + bunny.offsetWidth / 2;
+  const width = bunnyBubble.offsetWidth;
+  const left = Math.min(Math.max(middle - width / 2, 10), bunny.parentElement.clientWidth - width - 10);
+  bunnyBubble.style.left = `${left.toFixed(1)}px`;
+  bunnyBubble.style.setProperty('--tail-x', `${Math.min(Math.max(middle - left, 16), width - 16).toFixed(1)}px`);
+}
 
 // Removing and re-adding a class restarts its animation, so every tap gets a fresh hop.
 function replayClass(element, className) {
@@ -387,9 +398,13 @@ function showBunnyMail() {
     bunnyBubble.textContent = bunnyMailLine();
     bunnyBubble.classList.add('mail');
     bunnyBubble.hidden = false;
+    placeBubble();
     if (!hadMail) {
       replayClass(bunny, 'hop');
       replayClass(bunnyBubble, 'pop');
+      // It carries the letter back home and waits there for her.
+      stopEmote();
+      if (bunnyIsAwake()) walkBunnyTo(0);
     }
   } else if (hadMail) {
     bunnyBubble.classList.remove('mail');
@@ -410,7 +425,11 @@ window.addEventListener('mailbox:unread', event => {
   showBunnyMail();
 });
 // Keep the bubble's wording in step with day and night while a letter is waiting.
-new MutationObserver(() => { if (bunnyHasMail) bunnyBubble.textContent = bunnyMailLine(); })
+new MutationObserver(() => {
+  if (!bunnyHasMail) return;
+  bunnyBubble.textContent = bunnyMailLine();
+  placeBubble();
+})
   .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 // The bunny says something in its bubble for a few seconds (never over a waiting letter).
@@ -419,14 +438,19 @@ function bunnySay(line, ms = 3600) {
   bunnyBubble.classList.remove('mail');
   bunnyBubble.textContent = line;
   bunnyBubble.hidden = false;
+  placeBubble();
   replayClass(bunnyBubble, 'pop');
   window.clearTimeout(bunnyBubbleTimer);
   bunnyBubbleTimer = window.setTimeout(() => { bunnyBubble.hidden = true; }, ms);
 }
 
+// A tap stops it in its tracks for a little reaction; asleep, it just stirs.
 bunny.addEventListener('click', () => {
   if (bunnyHasMail) return openMailboxFromBunny();
-  replayClass(bunny, 'hop');
+  noteBunnyAttention();
+  stopWalking();
+  if (bunnyIsAwake()) playEmote(tapEmote());
+  else replayClass(bunny, 'hop');
   bunnySay(nextBunnyLine(), 2800);
 });
 bunnyBubble.addEventListener('click', () => { if (bunnyHasMail) openMailboxFromBunny(); });
@@ -437,6 +461,7 @@ fetch('/api/bunny').then(response => (response.ok ? response.json() : null)).the
   bunny.hidden = false;
   showBunnyMail();
   refreshWardrobe();
+  scheduleBunnyIdle();
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12 && document.documentElement.dataset.theme !== 'night') {
     window.setTimeout(() => { if (!bunnyHasMail) replayClass(bunny, 'waving'); }, 900);
@@ -694,6 +719,218 @@ document.querySelector('#wardrobe-items').addEventListener('click', event => {
   wardrobeNote.textContent = halloweenHat
     ? `${item.icon} saved for after halloween, the witch hat is on today 🎃`
     : `${item.icon} ${item.name} ${outfit[item.slot] ? 'on ♡' : 'off'}`;
+});
+
+// ---- Bunny on the move: it hops after her cursor (or to where she taps on a phone), wanders now and then, and has little emotes. ----
+// It only moves by day, never while a letter is waiting or the wardrobe is open, and stays put if she prefers less motion.
+// It walks behind the big flower (a layer below it), so the flower always keeps its taps.
+const heroArt = bunny.parentElement;
+const bunnyBody = bunny.querySelector('.bunny-body');
+const bunnyShadow = bunny.querySelector('svg > .bunny-shadow');
+const walkSpeed = 120; // px per second, on average
+const hopMs = 420;
+const emoteMs = { love: 2200, giggle: 1600, twirl: 1000, surprised: 1500, dance: 2500, yawn: 2300, curious: 1800 };
+let walkTarget = 0;
+let walkFrame = 0;
+let walkStart = 0;
+let lastWalkFrame = 0;
+let lastHopPhase = 0;
+let walkArrived = false;
+let emoteTimer = null;
+let lastEmote = '';
+let lookTimer = null;
+let idleTimer = null;
+let lastAttention = 0;
+
+function bunnyIsAwake() {
+  return document.documentElement.dataset.theme !== 'night';
+}
+
+function bunnyCanMove() {
+  return !bunny.hidden && !bunnyHasMail && bunnyIsAwake() && !reducedMotion.matches && wardrobe.hidden;
+}
+
+function noteBunnyAttention() {
+  lastAttention = Date.now();
+}
+
+// How far it may go from home (in px): inside the arch and clear of the dress-up button in the corner.
+function bunnyRange() {
+  const width = bunny.offsetWidth;
+  const home = bunny.offsetLeft;
+  return {
+    min: Math.min(0, 10 - width * 0.2 - home),
+    max: Math.max(0, heroArt.clientWidth - 64 - width * 0.82 - home)
+  };
+}
+
+function clampToRange(offset) {
+  const { min, max } = bunnyRange();
+  return Math.min(Math.max(offset, min), max);
+}
+
+// The offset that puts the middle of the bunny under this point on the screen.
+function offsetUnder(clientX) {
+  return clientX - heroArt.getBoundingClientRect().left - bunny.offsetLeft - bunny.offsetWidth / 2;
+}
+
+// It is drawn facing left; facing right mirrors the drawing.
+function faceBunny(direction) {
+  bunny.classList.toggle('face-right', direction === 'right');
+}
+
+function walkBunnyTo(offset) {
+  walkTarget = clampToRange(offset);
+  if (Math.abs(walkTarget - bunnyX) < 2) return;
+  if (Math.abs(walkTarget - bunnyX) > 6) faceBunny(walkTarget > bunnyX ? 'right' : 'left');
+  walkArrived = false;
+  if (walkFrame) return;
+  stopEmote();
+  bunny.classList.add('walking');
+  walkStart = performance.now();
+  lastWalkFrame = walkStart;
+  lastHopPhase = 0;
+  walkFrame = window.requestAnimationFrame(stepWalk);
+}
+
+// Each frame it hops along: it moves mostly while in the air, squashes a little on landing, and its shadow
+// shrinks mid-hop. Once there it finishes the hop it is in before stopping.
+function stepWalk(now) {
+  const elapsed = Math.min(now - lastWalkFrame, 50);
+  lastWalkFrame = now;
+  const phase = ((now - walkStart) % hopMs) / hopMs;
+  const landed = phase < lastHopPhase;
+  lastHopPhase = phase;
+  if (walkArrived && landed) return stopWalking();
+  const distance = walkTarget - bunnyX;
+  const step = walkSpeed * (1 - Math.cos(2 * Math.PI * phase)) * elapsed / 1000;
+  bunnyX += Math.sign(distance) * Math.min(Math.abs(distance), step);
+  if (Math.abs(walkTarget - bunnyX) < 0.5) walkArrived = true;
+  const lift = Math.sin(Math.PI * phase);
+  const squash = 0.035 * Math.cos(2 * Math.PI * phase);
+  bunny.style.translate = `${bunnyX.toFixed(1)}px 0`;
+  bunnyBody.style.translate = `0 ${(-9 * lift).toFixed(2)}px`;
+  bunnyBody.style.scale = `${(1 + squash).toFixed(3)} ${(1 - squash).toFixed(3)}`;
+  bunnyShadow.style.scale = (1 - 0.2 * lift).toFixed(3);
+  placeBubble();
+  walkFrame = window.requestAnimationFrame(stepWalk);
+}
+
+function stopWalking() {
+  window.cancelAnimationFrame(walkFrame);
+  walkFrame = 0;
+  walkTarget = bunnyX;
+  bunny.classList.remove('walking');
+  bunnyBody.style.translate = '';
+  bunnyBody.style.scale = '';
+  bunnyShadow.style.scale = '';
+  // Back home it settles facing the way it always sits.
+  if (Math.abs(bunnyX) < 1) faceBunny('left');
+}
+
+// Its eyes glance towards her cursor or tap for a couple of seconds.
+function bunnyLookAt(clientX, clientY) {
+  if (reducedMotion.matches || !bunnyIsAwake()) return;
+  const box = bunny.getBoundingClientRect();
+  const dx = clientX - (box.left + box.width / 2);
+  const dy = clientY - (box.top + box.height / 2);
+  const length = Math.hypot(dx, dy) || 1;
+  const reach = Math.min(length / 120, 1) * 1.6;
+  const mirror = bunny.classList.contains('face-right') ? -1 : 1;
+  bunny.style.setProperty('--look-x', `${((dx / length) * reach * mirror).toFixed(2)}px`);
+  bunny.style.setProperty('--look-y', `${((dy / length) * reach).toFixed(2)}px`);
+  window.clearTimeout(lookTimer);
+  lookTimer = window.setTimeout(bunnyLookAhead, 2500);
+}
+
+function bunnyLookAhead() {
+  bunny.style.removeProperty('--look-x');
+  bunny.style.removeProperty('--look-y');
+}
+
+// Emotes are drawn in the bunny SVG and switched on by data-emote (see styles.css) for a moment.
+function playEmote(name) {
+  if (bunny.hidden) return;
+  window.clearTimeout(emoteTimer);
+  // Drop a leftover hop so it doesn't replay when the emote ends.
+  bunny.classList.remove('hop');
+  delete bunny.dataset.emote;
+  void bunny.getBoundingClientRect();
+  bunny.dataset.emote = name;
+  lastEmote = name;
+  emoteTimer = window.setTimeout(stopEmote, emoteMs[name]);
+}
+
+function stopEmote() {
+  window.clearTimeout(emoteTimer);
+  delete bunny.dataset.emote;
+}
+
+// A different reaction each tap; with less motion it only changes its face.
+function tapEmote() {
+  const emotes = reducedMotion.matches ? ['love', 'giggle', 'surprised'] : ['love', 'giggle', 'surprised', 'twirl'];
+  const choices = emotes.filter(name => name !== lastEmote);
+  return choices[Math.floor(Math.random() * choices.length)];
+}
+
+// On a computer it notices her cursor coming into the arch, then hops along underneath it.
+heroArt.addEventListener('pointerenter', event => {
+  if (event.pointerType !== 'mouse') return;
+  if (bunnyCanMove() && !walkFrame && !bunny.dataset.emote && Date.now() - lastAttention > 20000) playEmote('curious');
+  noteBunnyAttention();
+});
+
+heroArt.addEventListener('pointermove', event => {
+  if (event.pointerType !== 'mouse' || bunny.hidden) return;
+  noteBunnyAttention();
+  bunnyLookAt(event.clientX, event.clientY);
+  // It holds still while she hovers it (to tap it) and while an emote plays.
+  if (!bunnyCanMove() || bunny.contains(event.target) || bunny.dataset.emote) return;
+  const offset = offsetUnder(event.clientX);
+  if (walkFrame || Math.abs(clampToRange(offset) - bunnyX) > 36) walkBunnyTo(offset);
+});
+
+// On a phone (or with a click) it hops to wherever she taps the empty arch; the flower, bunny and buttons keep their own taps.
+heroArt.addEventListener('click', event => {
+  if (event.target !== heroArt || bunny.hidden) return;
+  noteBunnyAttention();
+  bunnyLookAt(event.clientX, event.clientY);
+  if (bunnyCanMove()) walkBunnyTo(offsetUnder(event.clientX));
+});
+
+function scheduleBunnyIdle() {
+  window.clearTimeout(idleTimer);
+  idleTimer = window.setTimeout(bunnyIdle, 12000 + Math.random() * 10000);
+}
+
+// Every so often, when she isn't playing with it: wander a little, dance, yawn or twirl; left alone for a while, it heads home.
+function bunnyIdle() {
+  scheduleBunnyIdle();
+  if (document.hidden || !bunnyCanMove() || walkFrame || bunny.dataset.emote || Date.now() - lastAttention < 6000) return;
+  if (bunnyX !== 0 && Date.now() - lastAttention > 45000) return walkBunnyTo(0);
+  const roll = Math.random();
+  if (roll < 0.45) {
+    const { min, max } = bunnyRange();
+    return walkBunnyTo(min + Math.random() * (max - min));
+  }
+  playEmote(roll < 0.65 ? 'dance' : roll < 0.85 ? 'yawn' : 'twirl');
+}
+
+// Falling asleep (or waking up) mid-hop: land, settle and look straight ahead. The theme is re-applied every
+// minute, so only a real change counts.
+new MutationObserver(records => {
+  if (records.every(record => record.oldValue === document.documentElement.dataset.theme)) return;
+  stopWalking();
+  stopEmote();
+  faceBunny('left');
+  bunnyLookAhead();
+}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'], attributeOldValue: true });
+
+window.addEventListener('resize', () => {
+  bunnyX = clampToRange(bunnyX);
+  walkTarget = clampToRange(walkTarget);
+  bunny.style.translate = bunnyX ? `${bunnyX.toFixed(1)}px 0` : '';
+  placeBubble();
 });
 
 if (new URLSearchParams(window.location.search).has('insights')) {
