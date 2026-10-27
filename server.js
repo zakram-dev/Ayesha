@@ -30,6 +30,37 @@ if (!adminPassword || !sessionSecret) {
   throw new Error('ADMIN_PASSWORD and SESSION_SECRET must be configured before starting the server.');
 }
 
+// Browser security headers on every response. The pages only run their own scripts and styles (plus Google Fonts),
+// can't be shown inside another site, and only this site may use the microphone (for the mailbox voice notes).
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data:",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': contentSecurityPolicy,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(self), geolocation=(), payment=(), usb=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Strict-Transport-Security': 'max-age=31536000'
+  });
+  next();
+});
+
 app.use(express.json({ limit: '32kb' }));
 // Only files inside public/ are reachable; source, .git, .env and data stay private.
 app.use(express.static(path.join(__dirname, 'public'), { dotfiles: 'deny' }));

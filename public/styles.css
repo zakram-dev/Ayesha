@@ -47,7 +47,7 @@ footer { max-width:1200px;margin:auto;padding:0 46px 35px;display:flex;justify-c
 .orb,.ribbon,.flower-back,.art-note { pointer-events:none; }
 
 /* Bunny wardrobe: pieces are drawn in the bunny SVG and shown by the bunny's data-head / data-ear / data-face / data-neck. */
-.bunny-item { display:none; }
+.bunny-item { display:none; }.mini-pink { color:#f6b8cc; }.mini-cream { color:#fffaf7; }.mini-lilac { color:#d9c6f2; }
 .bunny[data-head="bow"] .item-bow,.bunny[data-head="flowers"] .item-flowers,.bunny[data-head="crown"] .item-crown,.bunny[data-head="sunhat"] .item-sunhat,.bunny[data-head="nightcap"] .item-nightcap,.bunny[data-ear="star"] .item-star,.bunny[data-ear="heartclip"] .item-heartclip,.bunny[data-face="glasses"] .item-glasses,.bunny[data-face="sunglasses"] .item-sunglasses,.bunny[data-neck="scarf"] .item-scarf,.bunny[data-neck="bell"] .item-bell,.bunny[data-neck="locket"] .item-locket,.bunny[data-hold="balloon"] .item-balloon { display:inline; }
 [data-season="halloween"] .bunny .bunny-head-item { display:none; }
 
@@ -118,7 +118,7 @@ footer { max-width:1200px;margin:auto;padding:0 46px 35px;display:flex;justify-c
 @keyframes flower-secret-in { from { opacity:0; transform:translate(-50%,10px) scale(.85); } to { opacity:1; transform:translate(-50%,0) scale(1); } }
 
 /* Seasonal outfits (html[data-season], set in script.js): Halloween gives the bunny a witch hat, a pumpkin and bats at night. */
-.bunny-hat,.bunny-pumpkin,.bats { display:none; }[data-season="halloween"] .bunny-hat,[data-season="halloween"] .bunny-pumpkin { display:inline; }
+.bat-defs { position:absolute; }.bunny-hat,.bunny-pumpkin,.bats { display:none; }[data-season="halloween"] .bunny-hat,[data-season="halloween"] .bunny-pumpkin { display:inline; }
 .bunny-hat { transform-box:fill-box; transform-origin:50% 100%; transform:rotate(-8deg); }.bunny-hat-brim,.bunny-hat-cone { fill:#4b2c5e; stroke:#2f1a3b; stroke-width:1; }.bunny-hat-band { fill:#f4a259; }
 .bunny-pumpkin { position:absolute; z-index:1; left:19%; bottom:4px; width:132px; height:132px; overflow:visible; pointer-events:none; }.bunny[hidden] + .bunny-pumpkin { display:none; }
 .pumpkin-body { fill:#f4a259; stroke:#de8434; stroke-width:1.2; }.pumpkin-rib { fill:none; stroke:#de8434; stroke-width:1.2; }.pumpkin-stem { fill:none; stroke:#7a5a3a; stroke-width:2.2; stroke-linecap:round; }.pumpkin-leaf { fill:#8fbf7a; }
