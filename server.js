@@ -771,6 +771,45 @@ app.get('/api/voice/session', requireVoice, (req, res) => {
   res.json({ unread: unreadVoiceMessages('zohaib') });
 });
 
+// The bunny's wardrobe (her outfit, saved looks, visit days and unlocks), kept with her mailbox login so it follows her
+// between phones. Only short item ids, dates and yes/no flags are stored.
+const wardrobeSlotNames = ['head', 'ear', 'face', 'neck', 'hold', 'fur'];
+
+function cleanWardrobe(input) {
+  const itemId = value => (typeof value === 'string' && /^[a-z0-9-]{1,24}$/.test(value) ? value : '');
+  const outfit = value => Object.fromEntries(wardrobeSlotNames.map(slot => [slot, itemId(value?.[slot])]));
+  const list = (value, pattern, max) => (Array.isArray(value)
+    ? [...new Set(value.filter(entry => typeof entry === 'string' && pattern.test(entry)))].slice(-max)
+    : []);
+  return {
+    outfit: outfit(input?.outfit),
+    looks: [0, 1, 2].map(index => (input?.looks?.[index] && typeof input.looks[index] === 'object' ? outfit(input.looks[index]) : null)),
+    seen: input?.seen === null ? null : list(input?.seen, /^[a-z0-9-]{1,24}$/, 100),
+    days: list(input?.days, /^(\d{4}-\d{2}-\d{2}|legacy-\d{1,3})$/, 400),
+    secret: input?.secret === true,
+    nightOwl: input?.nightOwl === true,
+    delivered: input?.delivered === true,
+    updatedAt: Math.max(0, Math.min(Math.floor(Number(input?.updatedAt) || 0), Date.now() + 24 * 60 * 60 * 1000))
+  };
+}
+
+app.get('/api/wardrobe', requireVoice, (req, res) => {
+  let state = null;
+  try {
+    const saved = readSetting('bunny_wardrobe');
+    state = saved ? cleanWardrobe(JSON.parse(saved)) : null;
+  } catch (error) {
+    state = null;
+  }
+  res.json({ state });
+});
+
+app.put('/api/wardrobe', requireVoice, (req, res) => {
+  if (!req.body?.state || typeof req.body.state !== 'object') return res.status(400).json({ error: 'Nothing to save.' });
+  saveSetting.run('bunny_wardrobe', JSON.stringify(cleanWardrobe(req.body.state)));
+  res.json({ ok: true });
+});
+
 app.get('/api/voice/messages', requireVoice, (req, res) => {
   res.json(listVoiceMessages('ayesha'));
 });

@@ -417,6 +417,7 @@ function showBunnyMail() {
 function openMailboxFromBunny() {
   // Opening a letter the bunny brought unlocks its heart balloon.
   writeStored(deliveredKey, true);
+  scheduleWardrobeSave();
   document.querySelector('#open-voice-notes').click();
 }
 
@@ -529,6 +530,7 @@ function revealFlowerSecret() {
   } catch (error) {
     // Without storage the bunny just keeps hinting; nothing else changes.
   }
+  scheduleWardrobeSave();
   window.clearTimeout(flowerSecretTimer);
   flowerSecretTimer = window.setTimeout(hideFlowerSecret, 9000);
   // Finding the secret unlocks the bunny's star clip; let her read the card first.
@@ -557,33 +559,52 @@ fetch('/api/flower').then(response => (response.ok ? response.json() : null)).th
   if (settings) flowerSettings = settings;
 }).catch(error => console.warn('Unable to load the flower secret.', error));
 
-// ---- Bunny wardrobe: she dresses the bunny up; some pieces unlock with visits or the flower secret. ----
-// All of it lives in her own browser: the outfit, how many days she has visited, and which pieces she has seen.
-// Listed by spot (head, ear, face, neck, hold); pieces without an unlock rule are there from the start.
+// ---- Bunny wardrobe: a wooden wardrobe (opened with 🎀) where she dresses the bunny; some pieces unlock over time. ----
+// Her outfit, saved looks and progress live in her browser and, once she has opened the mailbox, on the server too, so they
+// follow her to another phone. Every piece is drawn in the bunny SVG; its picture in the wardrobe is a copy of that drawing
+// (view = the part of the bunny's 120×120 drawing to show). Pieces without an unlock rule are there from the start.
 const wardrobeItems = [
-  { id: 'bow', slot: 'head', icon: '🎀', name: 'pink bow' },
-  { id: 'flowers', slot: 'head', icon: '🌸', name: 'flower crown', unlock: { days: 3 } },
-  { id: 'crown', slot: 'head', icon: '👑', name: 'little crown', unlock: { days: 7 } },
-  { id: 'sunhat', slot: 'head', icon: '👒', name: 'sun hat', unlock: { days: 10 } },
-  { id: 'nightcap', slot: 'head', icon: '🌙', name: 'sleepy nightcap', unlock: { nightOwl: true } },
-  { id: 'heartclip', slot: 'ear', icon: '💗', name: 'heart clip' },
-  { id: 'star', slot: 'ear', icon: '⭐', name: 'star clip', unlock: { secret: true } },
-  { id: 'glasses', slot: 'face', icon: '👓', name: 'round glasses' },
-  { id: 'sunglasses', slot: 'face', icon: '🕶️', name: 'heart sunglasses', unlock: { days: 5 } },
-  { id: 'scarf', slot: 'neck', icon: '🧣', name: 'cozy scarf' },
-  { id: 'bell', slot: 'neck', icon: '🔔', name: 'bell collar' },
-  { id: 'locket', slot: 'neck', icon: '💝', name: 'heart locket', unlock: { days: 14 } },
-  { id: 'balloon', slot: 'hold', icon: '🎈', name: 'heart balloon', unlock: { delivered: true } }
+  { id: 'bow', slot: 'head', name: 'pink bow', view: '30 33 27 19' },
+  { id: 'flowers', slot: 'head', name: 'flower crown', view: '39 34 42 18', unlock: { days: 3 } },
+  { id: 'crown', slot: 'head', name: 'little crown', view: '46 28 28 19', unlock: { days: 7 } },
+  { id: 'sunhat', slot: 'head', name: 'sun hat', view: '31 25 58 28', unlock: { days: 10 } },
+  { id: 'nightcap', slot: 'head', name: 'sleepy nightcap', view: '42 23 52 29', unlock: { nightOwl: true } },
+  { id: 'heartclip', slot: 'ear', name: 'heart clip', view: '66 16.5 14 12' },
+  { id: 'star', slot: 'ear', name: 'star clip', view: '66 15 14 13', unlock: { secret: true } },
+  { id: 'glasses', slot: 'face', name: 'round glasses', view: '39 52 42 17' },
+  { id: 'sunglasses', slot: 'face', name: 'heart sunglasses', view: '39 52 42 17', unlock: { days: 5 } },
+  { id: 'scarf', slot: 'neck', name: 'cozy scarf', view: '39 73 42 30' },
+  { id: 'bell', slot: 'neck', name: 'bell collar', view: '41 75 38 18' },
+  { id: 'locket', slot: 'neck', name: 'heart locket', view: '41 74 38 19', unlock: { days: 14 } },
+  { id: 'bouquet', slot: 'hold', name: 'flower bouquet', view: '63 82 30 31' },
+  { id: 'coffee', slot: 'hold', name: 'cup of coffee', view: '61 86 23 24' },
+  { id: 'book', slot: 'hold', name: 'storybook', view: '42 88 36 26', unlock: { days: 2 } },
+  { id: 'icecream', slot: 'hold', name: 'ice cream', view: '60 83 24 29', unlock: { days: 4 } },
+  { id: 'teddy', slot: 'hold', name: 'tiny teddy', view: '86 88 24 28', unlock: { days: 8 } },
+  { id: 'umbrella', slot: 'hold', name: 'pink parasol', view: '66 28 50 84', unlock: { days: 12 } },
+  { id: 'balloon', slot: 'hold', name: 'heart balloon', view: '70 54 40 56', unlock: { delivered: true } },
+  { id: 'white', slot: 'fur', name: 'snowy white fur' },
+  { id: 'cream', slot: 'fur', name: 'cream fur' },
+  { id: 'pink', slot: 'fur', name: 'strawberry pink fur' },
+  { id: 'grey', slot: 'fur', name: 'cloudy grey fur', unlock: { days: 4 } },
+  { id: 'caramel', slot: 'fur', name: 'caramel fur', unlock: { days: 6 } }
 ];
-const wardrobeSlots = ['head', 'ear', 'face', 'neck', 'hold'];
+const wardrobeSlots = ['head', 'ear', 'face', 'neck', 'hold', 'fur'];
 const outfitKey = 'ayesha-bunny-outfit';
-const visitDaysKey = 'ayesha-bunny-visit-days';
+const visitDatesKey = 'ayesha-bunny-visit-dates';
+const oldVisitDaysKey = 'ayesha-bunny-visit-days';
 const seenItemsKey = 'ayesha-bunny-seen-items';
 const nightOwlKey = 'ayesha-bunny-night-owl';
 const deliveredKey = 'ayesha-bunny-delivered';
+const looksKey = 'ayesha-bunny-looks';
+const wardrobeUpdatedKey = 'ayesha-bunny-wardrobe-updated';
+const svgNS = 'http://www.w3.org/2000/svg';
 const wardrobe = document.querySelector('#wardrobe');
+const cabinet = document.querySelector('#cabinet');
 const wardrobeToggle = document.querySelector('#wardrobe-toggle');
 const wardrobeNote = document.querySelector('#wardrobe-note');
+const looksRow = document.querySelector('#looks-row');
+let wardrobeClosing = false;
 
 function readStored(key, fallback) {
   try {
@@ -601,21 +622,29 @@ function writeStored(key, value) {
   }
 }
 
-// Counts the different days she has visited, by her own calendar.
+// Her visits are kept as the different days (by her own calendar) she has opened the site.
 function countVisitDay() {
   const today = new Date().toLocaleDateString('en-CA');
-  const record = readStored(visitDaysKey, { count: 0, last: '' });
-  if (record.last !== today) {
-    record.count = (Number(record.count) || 0) + 1;
-    record.last = today;
-    writeStored(visitDaysKey, record);
+  let dates = readStored(visitDatesKey, null);
+  if (!Array.isArray(dates)) {
+    // Earlier visits were only counted, not dated: keep them as placeholders so nothing she unlocked is lost.
+    const old = readStored(oldVisitDaysKey, { count: 0, last: '' });
+    const earlier = Math.max(0, (Number(old.count) || 0) - (old.last ? 1 : 0));
+    dates = [...Array.from({ length: earlier }, (_, index) => `legacy-${index + 1}`), ...(old.last ? [old.last] : [])];
   }
-  return record.count;
+  if (!dates.includes(today)) dates.push(today);
+  dates = dates.slice(-400);
+  writeStored(visitDatesKey, dates);
+  return dates.length;
 }
 
-const visitDays = countVisitDay();
+let visitDays = countVisitDay();
 // A visit between midnight and 5am unlocks the nightcap.
 if (new Date().getHours() < 5) writeStored(nightOwlKey, true);
+
+function itemById(id) {
+  return wardrobeItems.find(item => item.id === id);
+}
 
 function isUnlocked(item) {
   const unlock = item.unlock || {};
@@ -628,42 +657,240 @@ function isUnlocked(item) {
 
 function unlockHint(item) {
   const unlock = item.unlock || {};
-  if (unlock.days) return `unlocks after visiting on ${unlock.days} different days (${Math.min(visitDays, unlock.days)} so far) ♡`;
-  if (unlock.secret) return "unlocks when you find the flower's secret ✿";
-  if (unlock.nightOwl) return 'unlocks when you visit me after midnight 🌙';
-  return 'unlocks when I bring you a letter and you open it ✉️';
+  if (unlock.days) return `opens after visiting on ${unlock.days} different days (${Math.min(visitDays, unlock.days)} so far) ♡`;
+  if (unlock.secret) return "opens when you find the flower's secret ✿";
+  if (unlock.nightOwl) return 'opens when you visit me after midnight 🌙';
+  return 'opens when I bring you a letter and you read it ✉️';
 }
 
-function currentOutfit() {
-  const saved = readStored(outfitKey, {});
+// The few words on a wrapped present's gift tag.
+function unlockTag(item) {
+  const unlock = item.unlock || {};
+  if (unlock.days) return `${Math.min(visitDays, unlock.days)}/${unlock.days} days`;
+  if (unlock.secret) return '✿ secret';
+  if (unlock.nightOwl) return '🌙 late';
+  return '✉ letter';
+}
+
+// Keeps only pieces that exist and are unlocked; white fur is simply no fur colour.
+function cleanOutfit(saved) {
   return Object.fromEntries(wardrobeSlots.map(slot => {
     const item = wardrobeItems.find(entry => entry.slot === slot && entry.id === saved?.[slot]);
-    return [slot, item && isUnlocked(item) ? item.id : ''];
+    return [slot, item && item.id !== 'white' && isUnlocked(item) ? item.id : ''];
   }));
 }
 
-function applyOutfit(outfit) {
+function currentOutfit() {
+  return cleanOutfit(readStored(outfitKey, {}));
+}
+
+function isWorn(outfit, item) {
+  return item.slot === 'fur' ? (outfit.fur || 'white') === item.id : outfit[item.slot] === item.id;
+}
+
+// A copy of the bunny for the mirror and the saved-look frames. It borrows the page bunny's gradients and flowers,
+// so the copies never repeat an id.
+function makeFigure(className) {
+  const figure = document.createElement('span');
+  figure.className = `bunny bunny-figure ${className}`;
+  const art = bunny.querySelector('svg').cloneNode(true);
+  art.querySelector('defs').remove();
+  art.querySelectorAll('[id], [style]').forEach(node => {
+    node.removeAttribute('id');
+    node.removeAttribute('style');
+  });
+  figure.append(art);
+  return figure;
+}
+
+function dressFigure(figure, outfit) {
   wardrobeSlots.forEach(slot => {
-    if (outfit[slot]) bunny.dataset[slot] = outfit[slot];
-    else delete bunny.dataset[slot];
+    if (outfit[slot]) figure.dataset[slot] = outfit[slot];
+    else delete figure.dataset[slot];
   });
 }
+
+const mirrorBunny = makeFigure('mirror-bunny');
+document.querySelector('#mirror-glass').append(mirrorBunny);
+let mirrorEmoteTimer = null;
+
+function applyOutfit(outfit) {
+  dressFigure(bunny, outfit);
+  dressFigure(mirrorBunny, outfit);
+}
+
+// The bunny in the mirror reacts to what she puts on.
+function mirrorEmote(name) {
+  window.clearTimeout(mirrorEmoteTimer);
+  delete mirrorBunny.dataset.emote;
+  void mirrorBunny.getBoundingClientRect();
+  mirrorBunny.dataset.emote = name;
+  mirrorEmoteTimer = window.setTimeout(() => delete mirrorBunny.dataset.emote, emoteMs[name] || 1500);
+}
+
+// Each piece's button shows a copy of its drawing (or a fluffy swatch for fur) and, while locked, a wrapped present.
+function itemPicture(item) {
+  if (item.slot === 'fur') {
+    const swatch = document.createElement('span');
+    swatch.className = 'fur-swatch';
+    if (item.id !== 'white') swatch.dataset.fur = item.id;
+    return swatch;
+  }
+  const picture = document.createElementNS(svgNS, 'svg');
+  picture.setAttribute('class', 'wardrobe-thumb');
+  picture.setAttribute('viewBox', item.view);
+  picture.setAttribute('aria-hidden', 'true');
+  const art = bunny.querySelector(`.item-${item.id}`).cloneNode(true);
+  art.classList.remove('bunny-item', 'bunny-head-item', 'bunny-hold-item');
+  picture.append(art);
+  return picture;
+}
+
+wardrobe.querySelectorAll('[data-slot]').forEach(shelf => {
+  shelf.replaceChildren(...wardrobeItems.filter(item => item.slot === shelf.dataset.slot).map(item => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wardrobe-item';
+    button.dataset.item = item.id;
+    button.innerHTML = '<span class="present" aria-hidden="true"><b class="present-tag"></b></span><span class="item-sparkle" aria-hidden="true">✦</span>';
+    button.prepend(itemPicture(item));
+    return button;
+  }));
+});
 
 function unseenItems() {
   const seen = readStored(seenItemsKey, []);
   return wardrobeItems.filter(item => isUnlocked(item) && !seen.includes(item.id));
 }
 
-function renderWardrobe() {
+function renderItems() {
   const outfit = currentOutfit();
   const unseen = unseenItems().map(item => item.id);
-  document.querySelector('#wardrobe-items').innerHTML = wardrobeItems.map(item => {
+  wardrobe.querySelectorAll('.wardrobe-item').forEach(button => {
+    const item = itemById(button.dataset.item);
     const unlocked = isUnlocked(item);
-    return `<button class="wardrobe-item${unlocked ? '' : ' locked'}${unseen.includes(item.id) ? ' is-new' : ''}" type="button"
-      data-item="${item.id}" aria-pressed="${outfit[item.slot] === item.id}" aria-label="${item.name}${unlocked ? '' : ' (locked)'}"
-      title="${item.name}"><span>${item.icon}</span></button>`;
-  }).join('');
+    button.classList.toggle('locked', !unlocked);
+    button.classList.toggle('is-new', unseen.includes(item.id));
+    button.setAttribute('aria-pressed', String(unlocked && isWorn(outfit, item)));
+    button.setAttribute('aria-label', unlocked ? item.name : `a wrapped present, it ${unlockHint(item)}`);
+    button.title = unlocked ? item.name : 'a wrapped present';
+    button.querySelector('.present-tag').textContent = unlocked ? '' : unlockTag(item);
+  });
   document.querySelector('#wardrobe-new').hidden = !unseen.length;
+}
+
+function readLooks() {
+  const looks = readStored(looksKey, []);
+  return [0, 1, 2].map(index => (looks?.[index] && typeof looks[index] === 'object' ? looks[index] : null));
+}
+
+// Three little photo frames: an empty one saves the current outfit, a filled one puts that look back on.
+function renderLooks() {
+  looksRow.replaceChildren(...readLooks().map((look, index) => {
+    const holder = document.createElement('div');
+    const frame = document.createElement('button');
+    holder.className = 'look';
+    frame.type = 'button';
+    frame.dataset.look = String(index);
+    holder.append(frame);
+    if (!look) {
+      frame.className = 'look-frame empty';
+      frame.setAttribute('aria-label', `Save this look in frame ${index + 1}`);
+      frame.innerHTML = '<b>+</b>save';
+      return holder;
+    }
+    frame.className = 'look-frame';
+    frame.setAttribute('aria-label', `Wear saved look ${index + 1}`);
+    const figure = makeFigure('look-bunny');
+    dressFigure(figure, cleanOutfit(look));
+    frame.append(figure);
+    const forget = document.createElement('button');
+    forget.type = 'button';
+    forget.className = 'look-clear';
+    forget.dataset.forgetLook = String(index);
+    forget.setAttribute('aria-label', `Forget saved look ${index + 1}`);
+    forget.textContent = '×';
+    holder.append(forget);
+    return holder;
+  }));
+}
+
+function wardrobeChanged() {
+  writeStored(wardrobeUpdatedKey, Date.now());
+  scheduleWardrobeSave();
+}
+
+function wearOutfit(outfit, emote) {
+  writeStored(outfitKey, outfit);
+  wardrobeChanged();
+  applyOutfit(outfit);
+  renderItems();
+  if (emote) mirrorEmote(emote);
+}
+
+function tryOn(item, button) {
+  if (!isUnlocked(item)) {
+    wardrobeNote.textContent = `🎁 this present ${unlockHint(item)}`;
+    replayClass(button.querySelector('.present'), 'wiggle');
+    return;
+  }
+  const outfit = currentOutfit();
+  if (item.slot === 'fur') outfit.fur = item.id === 'white' || outfit.fur === item.id ? '' : item.id;
+  else outfit[item.slot] = outfit[item.slot] === item.id ? '' : item.id;
+  const wearing = item.slot === 'fur' || outfit[item.slot] === item.id;
+  wearOutfit(outfit, wearing ? 'love' : '');
+  if (season === 'halloween' && item.slot === 'head' && outfit.head) {
+    wardrobeNote.textContent = `${item.name} saved for after halloween, the witch hat is on today 🎃`;
+  } else {
+    wardrobeNote.textContent = item.slot === 'fur' ? `${item.name} ♡` : `${item.name} ${wearing ? 'on ♡' : 'off'}`;
+  }
+}
+
+function useLook(index) {
+  const looks = readLooks();
+  if (!looks[index]) {
+    looks[index] = currentOutfit();
+    writeStored(looksKey, looks);
+    wardrobeChanged();
+    renderLooks();
+    wardrobeNote.textContent = `saved as look ${index + 1} ♡ tap it to wear it again`;
+    return;
+  }
+  wearOutfit(cleanOutfit(looks[index]), 'giggle');
+  wardrobeNote.textContent = `look ${index + 1}, on ♡`;
+}
+
+function forgetLook(index) {
+  const looks = readLooks();
+  looks[index] = null;
+  writeStored(looksKey, looks);
+  wardrobeChanged();
+  renderLooks();
+  looksRow.querySelector(`[data-look="${index}"]`).focus();
+  wardrobeNote.textContent = 'that frame is free again';
+}
+
+// A random outfit from what she has unlocked, a little different from the current one.
+function surpriseOutfit() {
+  const current = currentOutfit();
+  const chance = { head: 0.8, ear: 0.4, face: 0.35, neck: 0.55, hold: 0.55, fur: 0.45 };
+  let outfit = current;
+  for (let tries = 0; tries < 6 && JSON.stringify(outfit) === JSON.stringify(current); tries += 1) {
+    outfit = Object.fromEntries(wardrobeSlots.map(slot => {
+      const choices = wardrobeItems.filter(item => item.slot === slot && isUnlocked(item));
+      if (Math.random() > chance[slot]) return [slot, slot === 'fur' ? current.fur : ''];
+      const pick = choices[Math.floor(Math.random() * choices.length)].id;
+      return [slot, pick === 'white' ? '' : pick];
+    }));
+  }
+  wearOutfit(outfit, 'twirl');
+  wardrobeNote.textContent = '✨ how about this?';
+}
+
+function toggleDrawer(drawer, open = !drawer.classList.contains('is-open')) {
+  drawer.classList.toggle('is-open', open);
+  drawer.querySelector('.drawer-front').setAttribute('aria-expanded', String(open));
+  drawer.querySelector('.drawer-tray').inert = !open;
 }
 
 // Runs once the bunny appears and again when something unlocks: wears her outfit and mentions new pieces once.
@@ -671,55 +898,164 @@ function refreshWardrobe() {
   if (bunny.hidden) return;
   wardrobeToggle.hidden = false;
   applyOutfit(currentOutfit());
-  renderWardrobe();
+  renderItems();
   const unseen = unseenItems();
-  if (!unseen.length || !wardrobe.hidden) return;
-  const firstTime = readStored(seenItemsKey, null) === null;
-  bunnySay(firstTime ? 'psst… you can dress me up now 🎀' : `✨ new outfit for me: ${unseen[unseen.length - 1].name}!`);
+  if (!unseen.length || wardrobe.classList.contains('is-open')) return;
+  if (readStored(seenItemsKey, null) === null) bunnySay('psst… you can dress me up now 🎀');
+  else if (unseen.length > 1) bunnySay(`✨ ${unseen.length} new things in my wardrobe!`);
+  else bunnySay(`✨ something new in my wardrobe: ${unseen[0].name}!`);
 }
 
 function openWardrobe() {
-  renderWardrobe();
-  wardrobeNote.textContent = 'tap to put on or take off ♡';
-  wardrobe.hidden = false;
+  if (wardrobe.classList.contains('is-open')) return;
+  stopWalking();
+  applyOutfit(currentOutfit());
+  renderItems();
+  renderLooks();
+  // A drawer with something new inside starts pulled out.
+  wardrobe.querySelectorAll('.drawer').forEach(drawer => toggleDrawer(drawer, !!drawer.querySelector('.is-new')));
+  wardrobeNote.textContent = 'tap anything to try it on ♡';
+  wardrobe.classList.add('is-open');
+  wardrobe.setAttribute('aria-hidden', 'false');
   wardrobeToggle.setAttribute('aria-expanded', 'true');
   if (!bunnyHasMail) bunnyBubble.hidden = true;
+  // Focus moves in once the wardrobe is showing (it can't take focus while still invisible).
+  window.setTimeout(() => {
+    cabinet.classList.add('doors-open');
+    document.querySelector('#wardrobe-done').focus({ preventScroll: true });
+  }, reducedMotion.matches ? 30 : 220);
+  // Everything unlocked so far counts as seen once she has looked inside (the sparkles stay until next time).
   writeStored(seenItemsKey, wardrobeItems.filter(isUnlocked).map(item => item.id));
   document.querySelector('#wardrobe-new').hidden = true;
+  scheduleWardrobeSave();
 }
 
+// The doors swing shut first, then the wardrobe goes, and the bunny shows off its outfit.
 function closeWardrobe() {
-  wardrobe.hidden = true;
-  wardrobeToggle.setAttribute('aria-expanded', 'false');
+  if (!wardrobe.classList.contains('is-open') || wardrobeClosing) return;
+  wardrobeClosing = true;
+  cabinet.classList.remove('doors-open');
+  window.setTimeout(() => {
+    wardrobeClosing = false;
+    wardrobe.classList.remove('is-open');
+    wardrobe.setAttribute('aria-hidden', 'true');
+    wardrobeToggle.setAttribute('aria-expanded', 'false');
+    wardrobeToggle.focus({ preventScroll: true });
+    if (bunnyIsAwake() && !bunnyHasMail) {
+      playEmote('love');
+      bunnySay('do I look cute? ♡', 2600);
+    }
+  }, reducedMotion.matches ? 0 : 450);
 }
 
-wardrobeToggle.addEventListener('click', () => (wardrobe.hidden ? openWardrobe() : closeWardrobe()));
+wardrobeToggle.addEventListener('click', () => (wardrobe.classList.contains('is-open') ? closeWardrobe() : openWardrobe()));
 document.querySelector('#wardrobe-done').addEventListener('click', closeWardrobe);
-document.addEventListener('keydown', event => { if (event.key === 'Escape' && !wardrobe.hidden) closeWardrobe(); });
-
-document.querySelector('#wardrobe-items').addEventListener('click', event => {
-  const button = event.target.closest('.wardrobe-item');
-  if (!button) return;
-  const item = wardrobeItems.find(entry => entry.id === button.dataset.item);
-  if (!isUnlocked(item)) {
-    wardrobeNote.textContent = `${item.icon} ${unlockHint(item)}`;
-    return;
-  }
-  const outfit = currentOutfit();
-  outfit[item.slot] = outfit[item.slot] === item.id ? '' : item.id;
-  writeStored(outfitKey, outfit);
-  applyOutfit(outfit);
-  replayClass(bunny, 'hop');
-  // Only one piece per spot: update every button so a swapped-out piece un-highlights.
-  document.querySelectorAll('.wardrobe-item').forEach(other => {
-    const otherItem = wardrobeItems.find(entry => entry.id === other.dataset.item);
-    other.setAttribute('aria-pressed', String(outfit[otherItem.slot] === otherItem.id));
-  });
-  const halloweenHat = season === 'halloween' && item.slot === 'head' && outfit.head;
-  wardrobeNote.textContent = halloweenHat
-    ? `${item.icon} saved for after halloween, the witch hat is on today 🎃`
-    : `${item.icon} ${item.name} ${outfit[item.slot] ? 'on ♡' : 'off'}`;
+document.querySelector('#wardrobe-surprise').addEventListener('click', surpriseOutfit);
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && wardrobe.classList.contains('is-open')) closeWardrobe();
 });
+
+wardrobe.addEventListener('click', event => {
+  if (event.target === wardrobe) return closeWardrobe();
+  const item = event.target.closest('.wardrobe-item');
+  if (item) return tryOn(itemById(item.dataset.item), item);
+  const forget = event.target.closest('.look-clear');
+  if (forget) return forgetLook(Number(forget.dataset.forgetLook));
+  const frame = event.target.closest('.look-frame');
+  if (frame) return useLook(Number(frame.dataset.look));
+  const drawer = event.target.closest('.drawer-front');
+  if (drawer) toggleDrawer(drawer.closest('.drawer'));
+});
+
+// ---- Saving the wardrobe with her mailbox login, so it follows her between phones. ----
+let wardrobeSync = 'signed-out'; // 'checking' while asking the server, 'signed-in' once it accepts her mailbox session
+let wardrobeSaveTimer = null;
+
+function wardrobeSnapshot() {
+  return {
+    outfit: readStored(outfitKey, {}),
+    looks: readLooks(),
+    seen: readStored(seenItemsKey, null),
+    days: readStored(visitDatesKey, []),
+    secret: flowerSecretFound(),
+    nightOwl: readStored(nightOwlKey, false) === true,
+    delivered: readStored(deliveredKey, false) === true,
+    updatedAt: Number(readStored(wardrobeUpdatedKey, 0)) || 0
+  };
+}
+
+// The more recent outfit and looks win; visits, seen pieces and unlocks from both sides are all kept.
+function mergeWardrobe(mine, saved) {
+  const newer = (saved.updatedAt || 0) > (mine.updatedAt || 0) ? saved : mine;
+  const both = (first, second) => [...new Set([...(first || []), ...(second || [])])];
+  return {
+    outfit: newer.outfit || {},
+    looks: newer.looks || [null, null, null],
+    seen: mine.seen || saved.seen ? both(mine.seen, saved.seen) : null,
+    days: both(saved.days, mine.days).slice(-400),
+    secret: mine.secret || saved.secret,
+    nightOwl: mine.nightOwl || saved.nightOwl,
+    delivered: mine.delivered || saved.delivered,
+    updatedAt: Math.max(mine.updatedAt || 0, saved.updatedAt || 0)
+  };
+}
+
+function restoreWardrobe(state) {
+  writeStored(outfitKey, state.outfit);
+  writeStored(looksKey, state.looks);
+  if (state.seen) writeStored(seenItemsKey, state.seen);
+  writeStored(visitDatesKey, state.days);
+  if (state.nightOwl) writeStored(nightOwlKey, true);
+  if (state.delivered) writeStored(deliveredKey, true);
+  if (state.secret) {
+    try {
+      localStorage.setItem(flowerSecretFoundKey, 'yes');
+    } catch (error) {
+      // Without storage the server copy still remembers it.
+    }
+  }
+  writeStored(wardrobeUpdatedKey, state.updatedAt);
+  visitDays = state.days.length;
+}
+
+async function syncWardrobe() {
+  wardrobeSync = 'checking';
+  try {
+    const response = await fetch('/api/wardrobe');
+    if (!response.ok) {
+      wardrobeSync = 'signed-out';
+      return;
+    }
+    const { state: saved } = await response.json();
+    wardrobeSync = 'signed-in';
+    const merged = saved ? mergeWardrobe(wardrobeSnapshot(), saved) : wardrobeSnapshot();
+    restoreWardrobe(merged);
+    refreshWardrobe();
+    if (JSON.stringify(merged) !== JSON.stringify(saved)) saveWardrobeNow();
+  } catch (error) {
+    // Offline or busy: her browser keeps its own copy and tries again later.
+    wardrobeSync = 'signed-out';
+  }
+}
+
+function saveWardrobeNow() {
+  window.clearTimeout(wardrobeSaveTimer);
+  fetch('/api/wardrobe', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: wardrobeSnapshot() })
+  }).catch(() => {});
+}
+
+function scheduleWardrobeSave() {
+  if (wardrobeSync !== 'signed-in') return;
+  window.clearTimeout(wardrobeSaveTimer);
+  wardrobeSaveTimer = window.setTimeout(saveWardrobeNow, 1200);
+}
+
+// voice-notes.js reports the mailbox (on load when her phone is signed in, or once she unlocks it), which means the
+// server will take her wardrobe too; other visitors never ask.
+window.addEventListener('mailbox:unread', () => { if (wardrobeSync === 'signed-out') syncWardrobe(); });
 
 // ---- Bunny on the move: it hops after her cursor (or to where she taps on a phone), wanders now and then, and has little emotes. ----
 // It only moves by day, never while a letter is waiting or the wardrobe is open, and stays put if she prefers less motion.
@@ -747,7 +1083,7 @@ function bunnyIsAwake() {
 }
 
 function bunnyCanMove() {
-  return !bunny.hidden && !bunnyHasMail && bunnyIsAwake() && !reducedMotion.matches && wardrobe.hidden;
+  return !bunny.hidden && !bunnyHasMail && bunnyIsAwake() && !reducedMotion.matches && !wardrobe.classList.contains('is-open');
 }
 
 function noteBunnyAttention() {
@@ -903,17 +1239,21 @@ function scheduleBunnyIdle() {
   idleTimer = window.setTimeout(bunnyIdle, 12000 + Math.random() * 10000);
 }
 
-// Every so often, when she isn't playing with it: wander a little, dance, yawn or twirl; left alone for a while, it heads home.
+// Every so often, when she isn't playing with it: wander a little, look around, dance, yawn or twirl; left alone for a while, it heads home.
 function bunnyIdle() {
   scheduleBunnyIdle();
   if (document.hidden || !bunnyCanMove() || walkFrame || bunny.dataset.emote || Date.now() - lastAttention < 6000) return;
   if (bunnyX !== 0 && Date.now() - lastAttention > 45000) return walkBunnyTo(0);
   const roll = Math.random();
-  if (roll < 0.45) {
+  if (roll < 0.35) {
     const { min, max } = bunnyRange();
     return walkBunnyTo(min + Math.random() * (max - min));
   }
-  playEmote(roll < 0.65 ? 'dance' : roll < 0.85 ? 'yawn' : 'twirl');
+  if (roll < 0.5) {
+    const box = heroArt.getBoundingClientRect();
+    return bunnyLookAt(box.left + Math.random() * box.width, box.top + Math.random() * box.height * 0.7);
+  }
+  playEmote(roll < 0.68 ? 'dance' : roll < 0.84 ? 'yawn' : 'twirl');
 }
 
 // Falling asleep (or waking up) mid-hop: land, settle and look straight ahead. The theme is re-applied every

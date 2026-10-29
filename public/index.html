@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=headers" />
+    <link rel="stylesheet" href="styles.css?v=wardrobe-3" />
   </head>
   <body>
     <div class="announcement" id="announcement" role="region" aria-label="What's new" hidden>
@@ -71,25 +71,29 @@
             <button class="flower-secret-close" id="flower-secret-close" type="button" aria-label="Close the secret">×</button>
           </div>
           <p class="bunny-bubble" id="bunny-bubble" role="status" aria-live="polite" hidden></p>
-          <div class="wardrobe" id="wardrobe" role="dialog" aria-label="Dress up the bunny" hidden>
-            <p class="wardrobe-title">dress up the bunny <span>✿</span></p>
-            <div class="wardrobe-items" id="wardrobe-items"></div>
-            <p class="wardrobe-note" id="wardrobe-note" role="status" aria-live="polite"></p>
-            <button class="wardrobe-done" id="wardrobe-done" type="button">done</button>
-          </div>
-          <button class="wardrobe-toggle" id="wardrobe-toggle" type="button" aria-label="Dress up the bunny" aria-expanded="false" hidden>🎀<span class="wardrobe-new" id="wardrobe-new" hidden></span></button>
+          <button class="wardrobe-toggle" id="wardrobe-toggle" type="button" aria-label="Open the bunny's wardrobe" aria-haspopup="dialog" aria-expanded="false" hidden>🎀<span class="wardrobe-new" id="wardrobe-new" hidden></span></button>
           <button class="bunny" id="bunny" type="button" aria-label="Say hi to the bunny" hidden>
             <svg viewBox="0 0 120 120" aria-hidden="true">
               <defs>
+                <radialGradient id="fur-shade" cx=".38" cy=".3" r=".8"><stop offset="0" class="fur-stop-hi" /><stop offset=".55" class="fur-stop-mid" /><stop offset="1" class="fur-stop-lo" /></radialGradient>
+                <radialGradient id="ear-shade" cx=".5" cy=".3" r=".75"><stop offset="0" stop-color="#fcdbe5" /><stop offset="1" stop-color="#ee9fb7" /></radialGradient>
+                <radialGradient id="soft-shade"><stop offset="0" stop-color="#6b3552" stop-opacity=".3" /><stop offset="1" stop-color="#6b3552" stop-opacity="0" /></radialGradient>
+                <radialGradient id="soft-shine"><stop offset="0" stop-color="#fff" stop-opacity=".9" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></radialGradient>
+                <radialGradient id="blush"><stop offset="0" stop-color="#f29ab5" stop-opacity=".85" /><stop offset="1" stop-color="#f29ab5" stop-opacity="0" /></radialGradient>
+                <radialGradient id="ground-shade"><stop offset="0" class="ground-stop" stop-opacity=".32" /><stop offset=".65" class="ground-stop" stop-opacity=".14" /><stop offset="1" class="ground-stop" stop-opacity="0" /></radialGradient>
                 <g id="mini-flower"><circle cx="0" cy="-2.1" r="1.8" /><circle cx="2" cy="-.6" r="1.8" /><circle cx="1.2" cy="1.8" r="1.8" /><circle cx="-1.2" cy="1.8" r="1.8" /><circle cx="-2" cy="-.6" r="1.8" /><circle cx="0" cy="0" r="1.15" fill="#f6c453" /></g>
               </defs>
-              <ellipse class="bunny-shadow" cx="60" cy="113" rx="31" ry="5" />
+              <ellipse class="bunny-shadow" cx="60" cy="113" rx="34" ry="5.6" />
               <g class="bunny-body">
-                <circle class="bunny-fur" cx="90" cy="103" r="7.5" />
+                <path class="bunny-fur bunny-tail" d="M90.00 96.70A2.55 2.55 0 0 1 94.05 98.17A2.55 2.55 0 0 1 96.20 101.91A2.55 2.55 0 0 1 95.46 106.15A2.55 2.55 0 0 1 92.15 108.92A2.55 2.55 0 0 1 87.85 108.92A2.55 2.55 0 0 1 84.54 106.15A2.55 2.55 0 0 1 83.80 101.91A2.55 2.55 0 0 1 85.95 98.17A2.55 2.55 0 0 1 90.00 96.70Z" />
                 <g class="bunny-ear bunny-ear-left"><ellipse class="bunny-fur" cx="49" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="49" cy="30" rx="3.5" ry="14" /></g>
                 <g class="bunny-ear bunny-ear-right"><ellipse class="bunny-fur" cx="71" cy="28" rx="7.5" ry="21" /><ellipse class="bunny-inner" cx="71" cy="30" rx="3.5" ry="14" /><path class="bunny-item item-star" d="M73 17.5l1.3 2.7 3 .4-2.2 2 .6 2.9-2.7-1.4-2.7 1.4.6-2.9-2.2-2 3-.4z" /><path class="bunny-item item-heartclip" d="M73 25.6c-2.7-1.9-4.1-3.3-4.1-4.7 0-1.1.9-2 2-2 .9 0 1.6.4 2.1 1.1.5-.7 1.2-1.1 2.1-1.1 1.1 0 2 .9 2 2 0 1.4-1.4 2.8-4.1 4.7z" /></g>
                 <ellipse class="bunny-fur" cx="60" cy="93" rx="29" ry="21" />
+                <ellipse class="bunny-belly" cx="60" cy="97.5" rx="16" ry="12.5" />
+                <ellipse class="bunny-shine" cx="40.5" cy="93" rx="4" ry="7.5" transform="rotate(24 40.5 93)" />
+                <ellipse class="bunny-ao" cx="60" cy="84.5" rx="20" ry="5.8" />
                 <circle class="bunny-fur" cx="60" cy="62" r="22" />
+                <ellipse class="bunny-shine" cx="50" cy="49.5" rx="8.5" ry="4.6" transform="rotate(-30 50 49.5)" />
                 <g class="bunny-hat">
                   <ellipse class="bunny-hat-brim" cx="60" cy="43" rx="21" ry="4.5" />
                   <path class="bunny-hat-cone" d="M48 43C51 33 55 22 61 12 63 9 67 8 70 10 66 13 64 18 64 24 65 31 68 37 72 43Z" />
@@ -128,7 +132,8 @@
                   <circle class="nightcap-pom" cx="87.5" cy="46.5" r="3.6" />
                   <circle class="nightcap-dot" cx="56" cy="34" r="1" /><circle class="nightcap-dot" cx="66" cy="31.5" r="1" /><circle class="nightcap-dot" cx="73" cy="37" r="1" />
                 </g>
-                <g class="bunny-eyes-open"><ellipse cx="52" cy="61" rx="2.4" ry="3" /><ellipse cx="68" cy="61" rx="2.4" ry="3" /></g>
+                <g class="bunny-face">
+                <g class="bunny-eyes-open"><ellipse cx="52" cy="61" rx="2.4" ry="3" /><ellipse cx="68" cy="61" rx="2.4" ry="3" /><circle class="eye-shine" cx="53" cy="59.6" r=".95" /><circle class="eye-shine" cx="69" cy="59.6" r=".95" /></g>
                 <g class="bunny-eyes-closed"><path d="M48.5 60.5q3.5 3.2 7 0" /><path d="M64.5 60.5q3.5 3.2 7 0" /></g>
                 <g class="bunny-emote-face face-happy"><path d="M48.5 62.5q3.5-4.2 7 0" /><path d="M64.5 62.5q3.5-4.2 7 0" /></g>
                 <g class="bunny-emote-face face-hearts">
@@ -145,12 +150,13 @@
                   <path class="sunglasses-lens" d="M68 66c-4.4-3-6.4-5.2-6.4-7.4 0-1.8 1.4-3.2 3.2-3.2 1.3 0 2.5.7 3.2 1.8.7-1.1 1.9-1.8 3.2-1.8 1.8 0 3.2 1.4 3.2 3.2 0 2.2-2 4.4-6.4 7.4z" />
                   <path class="sunglasses-frame" d="M58.4 59.4q1.6-1.2 3.2 0M45.6 58.6 41 57.2M74.4 58.6 79 57.2" />
                 </g>
-                <circle class="bunny-cheek" cx="46" cy="68" r="4" /><circle class="bunny-cheek" cx="74" cy="68" r="4" />
-                <ellipse class="bunny-nose" cx="60" cy="66.5" rx="2.2" ry="1.6" />
+                <circle class="bunny-cheek" cx="46" cy="68" r="5.4" /><circle class="bunny-cheek" cx="74" cy="68" r="5.4" />
+                <ellipse class="bunny-nose" cx="60" cy="66.5" rx="2.2" ry="1.6" /><ellipse class="nose-shine" cx="59.2" cy="65.9" rx=".75" ry=".45" />
                 <path class="bunny-mouth" d="M57 69.5q1.5 2 3 0q1.5 2 3 0" />
                 <path class="bunny-emote-mouth mouth-grin" d="M56.4 69.4q3.6 5.4 7.2 0z" />
                 <ellipse class="bunny-emote-mouth mouth-o" cx="60" cy="71.6" rx="1.9" ry="2.4" />
                 <ellipse class="bunny-emote-mouth mouth-yawn" cx="60" cy="72.4" rx="3" ry="3.8" />
+                </g>
                 <g class="bunny-item item-scarf">
                   <path class="scarf-tail" d="M68 84 71.5 100 77 98.5 74.5 83Z" />
                   <path class="scarf-band" d="M42.5 75.5C49 82 71 82 77.5 75.5L78.5 81.5C71 88.5 49 88.5 41.5 81.5Z" />
@@ -170,8 +176,62 @@
                   <path class="bunny-letter-flap" d="M45.8 89.5 60 99.5 74.2 89.5" />
                   <path class="bunny-letter-heart" d="M60 104.2c-3.4-2.3-5-4-5-5.7 0-1.4 1.1-2.4 2.4-2.4.9 0 1.9.6 2.6 1.5.7-.9 1.7-1.5 2.6-1.5 1.3 0 2.4 1 2.4 2.4 0 1.7-1.6 3.4-5 5.7z" />
                 </g>
-                <ellipse class="bunny-fur" cx="50" cy="110" rx="7" ry="4.5" />
-                <g class="bunny-wave-paw"><ellipse class="bunny-fur" cx="70" cy="110" rx="7" ry="4.5" /></g>
+                <g class="bunny-item bunny-hold-item item-bouquet">
+                  <path class="bouquet-stem" d="M71.5 109 77 92M72.5 109 84 95M71 109 73 90" />
+                  <ellipse class="bouquet-leaf" cx="80.5" cy="97" rx="3.2" ry="1.4" transform="rotate(-40 80.5 97)" />
+                  <ellipse class="bouquet-leaf" cx="73.4" cy="93.6" rx="2.8" ry="1.2" transform="rotate(-80 73.4 93.6)" />
+                  <g transform="translate(77 89.6) scale(1.45)"><use href="#mini-flower" class="mini-pink" /></g>
+                  <g transform="translate(84.6 94) scale(1.3)"><use href="#mini-flower" class="mini-cream" /></g>
+                  <g transform="translate(72.2 88.4) scale(1.3)"><use href="#mini-flower" class="mini-lilac" /></g>
+                  <path class="bouquet-wrap" d="M66.5 97.5 81 101 72.5 111.5Z" />
+                  <path class="bouquet-ribbon" d="M72 105.4c-2.6-1.6-4.4-.8-3.8.9.5 1.4 2.6 1 3.8-.9Zm0 0c2.6-1.6 4.4-.8 3.8.9-.5 1.4-2.6 1-3.8-.9Z" />
+                </g>
+                <g class="bunny-item bunny-hold-item item-icecream">
+                  <path class="cone" d="M66.2 95.5h10.6L71.5 111z" />
+                  <path class="cone-lines" d="M68 98.5l6.4 4.4M67.6 101.6l5.2-3.6M69.3 104.8l5.5-4.4M70.4 107.4l2.4-1.6" />
+                  <path class="scoop" d="M65.2 96.2c-.6-5.3 2.5-9 6.3-9s6.9 3.7 6.3 9c-1 .7-1.8-.3-2.6.5-.8.8-1.7-.4-2.6.4-.9.8-1.8-.4-2.7.3-.8.6-1.7-.5-2.5.2-.8.5-1.5-.6-2.2-1.4z" />
+                  <path class="sprinkles" d="M68.6 91.4l1.2-.7M73.4 90.2l.9 1M70.8 93.8l1.3.2" /><path class="sprinkles sprinkles-gold" d="M75.2 93.6l.6-1.2M67.9 94.6l.7-1M72.6 92.2l-.4 1.1" />
+                  <path class="cherry-stem" d="M71.5 87.3c.3-1.8 1.2-2.9 2.6-3.5" />
+                  <circle class="cherry" cx="71.5" cy="87.4" r="1.7" />
+                </g>
+                <g class="bunny-item bunny-hold-item item-teddy">
+                  <circle class="teddy-fur" cx="93" cy="92.6" r="2.3" /><circle class="teddy-fur" cx="102" cy="92.6" r="2.3" />
+                  <circle class="teddy-inner" cx="93" cy="92.7" r="1.1" /><circle class="teddy-inner" cx="102" cy="92.7" r="1.1" />
+                  <ellipse class="teddy-fur" cx="97.5" cy="107.6" rx="7" ry="6.6" />
+                  <ellipse class="teddy-fur" cx="91.4" cy="104.6" rx="2.1" ry="3.4" transform="rotate(28 91.4 104.6)" />
+                  <ellipse class="teddy-fur" cx="103.6" cy="104.6" rx="2.1" ry="3.4" transform="rotate(-28 103.6 104.6)" />
+                  <ellipse class="teddy-inner" cx="97.5" cy="108.6" rx="3.9" ry="3.6" />
+                  <ellipse class="teddy-fur" cx="93.4" cy="113.2" rx="2.5" ry="1.8" /><ellipse class="teddy-fur" cx="101.6" cy="113.2" rx="2.5" ry="1.8" />
+                  <circle class="teddy-fur" cx="97.5" cy="97.6" r="5.9" />
+                  <ellipse class="teddy-inner" cx="97.5" cy="99.5" rx="2.5" ry="1.9" />
+                  <ellipse class="teddy-dark" cx="97.5" cy="98.7" rx=".95" ry=".7" />
+                  <circle class="teddy-dark" cx="95.3" cy="96.5" r=".75" /><circle class="teddy-dark" cx="99.7" cy="96.5" r=".75" />
+                  <path class="teddy-heart" d="M97.5 110.6c-1.53 -0.99 -2.25 -1.80 -2.25 -2.52 0 -0.63 0.45 -1.08 1.08 -1.08 0.45 0 0.90 0.27 1.17 0.63 0.27 -0.36 0.72 -0.63 1.17 -0.63 0.63 0 1.08 0.45 1.08 1.08 0 0.72 -0.72 1.53 -2.25 2.52z" />
+                </g>
+                <g class="bunny-item bunny-hold-item item-book">
+                  <path class="book-cover" d="M44.5 93.6 60 97.2l15.5-3.6v15.2L60 112l-15.5-3.2z" />
+                  <path class="book-page" d="M46.2 92.4c5.4-1.3 9.8-.2 13.8 3.3v14.1c-4-3-8.4-3.9-13.8-2.7z" />
+                  <path class="book-page" d="M73.8 92.4c-5.4-1.3-9.8-.2-13.8 3.3v14.1c4-3 8.4-3.9 13.8-2.7z" />
+                  <path class="book-lines" d="M48.6 96.4c3.2-.6 6-.1 8.6 1.6M48.6 99.6c3.2-.6 6-.1 8.6 1.6M48.6 102.8c3.2-.6 6-.1 8.6 1.6M62.8 98c2.6-1.7 5.4-2.2 8.6-1.6M62.8 101.2c2.6-1.7 5.4-2.2 8.6-1.6" />
+                  <path class="book-heart" d="M67 105.8c-1.70 -1.10 -2.50 -2.00 -2.50 -2.80 0 -0.70 0.50 -1.20 1.20 -1.20 0.50 0 1.00 0.30 1.30 0.70 0.30 -0.40 0.80 -0.70 1.30 -0.70 0.70 0 1.20 0.50 1.20 1.20 0 0.80 -0.80 1.70 -2.50 2.80z" />
+                </g>
+                <g class="bunny-item bunny-hold-item item-umbrella">
+                  <path class="umbrella-shaft" d="M70.5 110 92 54" />
+                  <g transform="rotate(21 92 54)">
+                    <path class="umbrella-canopy" d="M73.0 54.5C75.0 42 83.0 36 92 36S109.0 42 111.0 54.5Q108.29 52.20 105.57 54.5Q102.86 52.20 100.14 54.5Q97.43 52.20 94.71 54.5Q92.00 52.20 89.29 54.5Q86.57 52.20 83.86 54.5Q81.14 52.20 78.43 54.5Q75.71 52.20 73.00 54.5Z" />
+                    <path class="umbrella-ribs" d="M92 36.6 80 54M92 36.6V54M92 36.6 104 54" />
+                    <circle class="umbrella-tip" cx="92" cy="34.6" r="1.4" />
+                  </g>
+                </g>
+                <g class="bunny-item bunny-hold-item item-coffee">
+                  <path class="coffee-steam" d="M68.4 93.2c-1.4-1.7 1.4-2.8 0-4.6M72.6 93.2c-1.4-1.7 1.4-2.8 0-4.6" />
+                  <path class="mug-handle" d="M76.6 99.3c3.8-.3 3.8 5.9 0 5.6" />
+                  <rect class="mug" x="64.4" y="95.6" width="12.2" height="12" rx="2.6" />
+                  <ellipse class="coffee-top" cx="70.5" cy="96.4" rx="5.3" ry="1.25" />
+                  <path class="mug-heart" d="M70.5 104.6c-1.70 -1.10 -2.50 -2.00 -2.50 -2.80 0 -0.70 0.50 -1.20 1.20 -1.20 0.50 0 1.00 0.30 1.30 0.70 0.30 -0.40 0.80 -0.70 1.30 -0.70 0.70 0 1.20 0.50 1.20 1.20 0 0.80 -0.80 1.70 -2.50 2.80z" />
+                </g>
+                <ellipse class="bunny-fur" cx="50" cy="110" rx="7" ry="4.5" /><path class="bunny-toes" d="M47.6 111.3v1.5M50 111.6v1.5M52.4 111.3v1.5" />
+                <g class="bunny-wave-paw"><ellipse class="bunny-fur" cx="70" cy="110" rx="7" ry="4.5" /><path class="bunny-toes" d="M67.6 111.3v1.5M70 111.6v1.5M72.4 111.3v1.5" /></g>
                 <g class="bunny-item item-balloon">
                   <path class="balloon-string" d="M71 108C79 97 90 89 96 77" />
                   <path class="balloon-heart" d="M96 77c-8.6-5.8-12.4-10.1-12.4-14.3 0-3.4 2.7-6.1 6.1-6.1 2.6 0 4.9 1.4 6.3 3.5 1.4-2.1 3.7-3.5 6.3-3.5 3.4 0 6.1 2.7 6.1 6.1 0 4.2-3.8 8.5-12.4 14.3z" />
@@ -259,6 +319,44 @@
         </div>
       </div>
     </div>
+    <div class="modal wardrobe-modal" id="wardrobe" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="wardrobe-title">
+      <div class="cabinet" id="cabinet">
+        <div class="cabinet-top" aria-hidden="true"><span class="cabinet-heart">♥</span></div>
+        <div class="cabinet-lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="cabinet-frame">
+          <div class="cabinet-head">
+            <h3 class="cabinet-plaque" id="wardrobe-title">the bunny's wardrobe</h3>
+            <button class="cabinet-close" id="wardrobe-done" type="button" aria-label="Close the wardrobe">×</button>
+          </div>
+          <div class="cabinet-inside">
+            <div class="cabinet-mirror-side">
+              <div class="mirror" aria-hidden="true"><div class="mirror-glass" id="mirror-glass"></div></div>
+              <div class="looks">
+                <p class="cabinet-label">my looks</p>
+                <div class="looks-row" id="looks-row"></div>
+              </div>
+              <button class="surprise-btn" id="wardrobe-surprise" type="button">✨ surprise me</button>
+            </div>
+            <div class="cabinet-shelves">
+              <section class="shelf" aria-label="Hats"><p class="cabinet-label">hats</p><div class="shelf-items" data-slot="head"></div></section>
+              <section class="rail" aria-label="Scarves and necklaces"><p class="cabinet-label">scarves &amp; necklaces</p><div class="rail-items" data-slot="neck"></div></section>
+              <div class="drawers">
+                <section class="drawer" aria-label="Clips drawer"><button class="drawer-front" type="button" aria-expanded="false" aria-controls="drawer-ear"><span class="drawer-label">clips</span></button><div class="drawer-tray" id="drawer-ear" data-slot="ear" inert></div></section>
+                <section class="drawer" aria-label="Glasses drawer"><button class="drawer-front" type="button" aria-expanded="false" aria-controls="drawer-face"><span class="drawer-label">glasses</span></button><div class="drawer-tray" id="drawer-face" data-slot="face" inert></div></section>
+              </div>
+              <div class="cabinet-bottom">
+                <section class="basket" aria-label="Things to hold"><p class="cabinet-label">to hold</p><div class="basket-items" data-slot="hold"></div></section>
+                <section class="fur-shelf" aria-label="Fur colour"><p class="cabinet-label">fur</p><div class="fur-items" data-slot="fur"></div></section>
+              </div>
+            </div>
+          </div>
+          <p class="wardrobe-note" id="wardrobe-note" role="status" aria-live="polite"></p>
+          <div class="cabinet-door door-left" aria-hidden="true"><span class="door-carving">♥</span><i class="door-knob"></i></div>
+          <div class="cabinet-door door-right" aria-hidden="true"><span class="door-carving">✿</span><i class="door-knob"></i></div>
+        </div>
+        <div class="cabinet-feet" aria-hidden="true"><i></i><i></i></div>
+      </div>
+    </div>
     <section class="insights" id="insights" hidden aria-labelledby="insights-title">
       <p class="eyebrow"><span></span> private owner view</p>
       <h2 id="insights-title">What is resonating.</h2>
@@ -269,7 +367,7 @@
       </div>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
-    <script src="script.js?v=bunny-moves"></script>
+    <script src="script.js?v=wardrobe-3"></script>
     <script src="voice-kit.js?v=voice-notes"></script>
     <script src="voice-notes.js?v=bunny-mail"></script>
   </body>
