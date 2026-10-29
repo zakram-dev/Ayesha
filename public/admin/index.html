@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css?v=note-comments" />
+    <link rel="stylesheet" href="/admin/admin.css?v=my-status" />
   </head>
   <body>
     <main>
@@ -33,6 +33,7 @@
           <button class="admin-tab" type="button" data-tab="categories">Categories</button>
           <button class="admin-tab" type="button" data-tab="quotes">Quotes</button>
           <button class="admin-tab" type="button" data-tab="voice">Mailbox <b class="tab-badge" id="voice-tab-badge" hidden></b></button>
+          <button class="admin-tab" type="button" data-tab="status">My status</button>
           <button class="admin-tab" type="button" data-tab="settings">Settings</button>
         </nav>
 
@@ -49,6 +50,47 @@
               <div><h2>Popular categories</h2><ol id="top-categories"><li>No interactions yet.</li></ol></div>
               <div><h2>Popular quotes</h2><ol id="top-quotes"><li>No quote views yet.</li></ol></div>
             </div>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-panel="status">
+          <section class="panel">
+            <div class="section-header"><h2>My status for her</h2></div>
+            <p class="setting-hint">Only she sees this, once she has opened the mailbox or a sealed note. Each status ends on its own (free after 2 hours, school/work/home after 8–10), then she sees "not sure ♡ just ask". Her invite buttons buzz your phone and show up in the mailbox.</p>
+            <p class="status-now" id="admin-status-now">Loading…</p>
+            <div class="status-buttons" id="status-buttons">
+              <button class="small-button" type="button" data-set="home">free · at home</button>
+              <button class="small-button" type="button" data-set="free-school">free · at school</button>
+              <button class="small-button" type="button" data-set="school">at school</button>
+              <button class="small-button" type="button" data-set="work">at work</button>
+              <button class="small-button" type="button" data-set="free">free</button>
+              <button class="small-button" type="button" data-set="chat">busy, can chat</button>
+              <button class="small-button" type="button" data-set="busy">busy</button>
+              <button class="small-button secondary" type="button" data-set="clear">clear</button>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="section-header"><h2>iPhone key</h2></div>
+            <p class="setting-hint" id="status-key-state"></p>
+            <div class="announcement-buttons">
+              <button class="button" id="status-key-create" type="button">Create a key</button>
+              <button class="button secondary" id="status-key-off" type="button">Switch the key off</button>
+            </div>
+            <div class="status-key-box" id="status-key-box" hidden>
+              <p><strong>Copy this now.</strong> It is shown only once; if you lose it, make a new one.</p>
+              <code id="status-key-value"></code>
+              <button class="small-button" id="status-key-copy" type="button">Copy key</button>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="section-header"><h2>Set it up on your iPhone</h2></div>
+            <ol class="setup-steps">
+              <li><strong>One helper shortcut (holds the key).</strong> Shortcuts app → <b>+</b> → name it <code>Ayesha status</code>. Add the action <b>Get Contents of URL</b>, URL <code class="status-url">https://ayeshanoor.fun/api/status</code>. Tap the arrow to show more: Method <b>POST</b> · Headers: add <code>X-Status-Key</code> = your key · Request Body <b>JSON</b>: add a <b>Text</b> field named <code>set</code> and set its value to the <b>Shortcut Input</b> variable.</li>
+              <li><strong>Wi‑Fi automations.</strong> Automation tab → <b>+</b> → <b>Wi‑Fi</b> → pick your home network → <b>Run Immediately</b> (and turn off "Notify When Run"). Actions: a <b>Text</b> action with <code>home</code>, then <b>Run Shortcut</b> → <code>Ayesha status</code>. Do the same for school (<code>school</code>) and work (<code>work</code>).</li>
+              <li><strong>Location automations (backup, and for leaving).</strong> <b>+</b> → <b>Arrive</b> → choose the place → Run Immediately → Text <code>home</code> / <code>school</code> / <code>work</code> → Run Shortcut <code>Ayesha status</code>. Then <b>Leave</b> for each place with <code>leave-home</code>, <code>leave-school</code>, <code>leave-work</code> (these only clear the status if it came from that place).</li>
+              <li><strong>Your manual button (optional).</strong> New shortcut <code>My status</code>: <b>Choose from List</b> with <code>free</code>, <code>free-school</code>, <code>chat</code>, <code>busy</code>, <code>clear</code> → <b>Run Shortcut</b> <code>Ayesha status</code>. Add it to your Home Screen for one-tap changes (like "free at school" between classes).</li>
+            </ol>
+            <p class="setting-hint">Words it understands: <code>home</code>, <code>school</code>, <code>free-school</code>, <code>work</code>, <code>free</code>, <code>chat</code>, <code>busy</code>, <code>leave-home</code>, <code>leave-school</code>, <code>leave-work</code>, <code>clear</code>. Your phone works out where you are; the site only ever receives the word.</p>
           </section>
         </div>
 
@@ -204,6 +246,6 @@
       </div>
     </div>
     <script src="/voice-kit.js?v=note-comments-3"></script>
-    <script src="/admin/admin.js?v=note-comments"></script>
+    <script src="/admin/admin.js?v=my-status"></script>
   </body>
 </html>

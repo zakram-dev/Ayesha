@@ -108,6 +108,7 @@ function activateTab(tabName) {
   document.querySelectorAll('.admin-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tabName));
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tabName));
   window.clearInterval(voicePollTimer);
+  if (tabName === 'status') loadMyStatus();
   if (tabName === 'voice') {
     loadVoiceThread();
     loadAlerts();
@@ -278,6 +279,7 @@ async function enterAdmin() {
   await loadData();
   // Phone alerts link straight to /admin/#voice.
   if (window.location.hash === '#voice') activateTab('voice');
+  if (window.location.hash === '#status') activateTab('status');
 }
 
 document.querySelector('#login-form').addEventListener('submit', async event => {
@@ -430,6 +432,71 @@ document.querySelector('#settings-form').addEventListener('submit', async event 
     showStatus(error.message, true);
   }
 });
+// ---- My status for her: what she sees, manual buttons, and the iPhone key ----
+const statusWordsShown = { home: 'free · at home', school: 'at school', 'free-school': 'free · at school', work: 'at work', free: 'free', chat: 'busy, can chat', busy: 'busy' };
+
+async function loadMyStatus() {
+  try {
+    const { status, keyConfigured } = await request('/api/admin/status');
+    document.querySelector('#admin-status-now').textContent = status
+      ? `She sees: he's ${statusWordsShown[status.key]} · until ${new Date(status.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+      : 'She sees: not sure ♡ just ask';
+    document.querySelector('#status-key-state').textContent = keyConfigured
+      ? 'Your iPhone key is on. Making a new one stops the old one straight away.'
+      : 'No key yet. Create one, then paste it into the "Ayesha status" shortcut.';
+    document.querySelector('#status-key-create').textContent = keyConfigured ? 'Make a new key' : 'Create a key';
+    document.querySelector('#status-key-off').hidden = !keyConfigured;
+    document.querySelectorAll('.status-url').forEach(element => { element.textContent = `${window.location.origin}/api/status`; });
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+}
+
+document.querySelector('#status-buttons').addEventListener('click', async event => {
+  const button = event.target.closest('[data-set]');
+  if (!button) return;
+  try {
+    await request('/api/status', { method: 'POST', body: JSON.stringify({ set: button.dataset.set }) });
+    await loadMyStatus();
+    showStatus('Status updated.');
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+});
+
+document.querySelector('#status-key-create').addEventListener('click', async () => {
+  if (document.querySelector('#status-key-off').hidden === false && !confirm('Make a new key? The old one stops working, so you will need to paste the new one into your shortcut.')) return;
+  try {
+    const { key } = await request('/api/admin/status/key', { method: 'POST' });
+    document.querySelector('#status-key-value').textContent = key;
+    document.querySelector('#status-key-box').hidden = false;
+    await loadMyStatus();
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+});
+
+document.querySelector('#status-key-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(document.querySelector('#status-key-value').textContent);
+    showStatus('Key copied.');
+  } catch (error) {
+    showStatus('Select the key and copy it by hand.', true);
+  }
+});
+
+document.querySelector('#status-key-off').addEventListener('click', async () => {
+  if (!confirm('Switch the key off? Your iPhone shortcuts will stop changing your status.')) return;
+  try {
+    await request('/api/admin/status/key', { method: 'DELETE' });
+    document.querySelector('#status-key-box').hidden = true;
+    await loadMyStatus();
+    showStatus('Key switched off.');
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+});
+
 document.querySelector('#category-cancel').addEventListener('click', () => {
   editingCategoryId = null;
   document.querySelector('#category-form').reset();

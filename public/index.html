@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=note-comments-2" />
+    <link rel="stylesheet" href="styles.css?v=my-status" />
   </head>
   <body>
     <div class="announcement" id="announcement" role="region" aria-label="What's new" hidden>
@@ -42,6 +42,15 @@
           <div class="hero-actions">
             <button class="primary-btn" id="open-note" data-track="open-note">Open a little note <span>→</span></button>
               <button class="text-btn" id="random-note" data-track="random-note">surprise me <span>↗︎</span></button>
+          </div>
+          <div class="his-status" id="his-status" hidden>
+            <p class="his-status-line"><span class="status-dot" id="status-dot" aria-hidden="true"></span><strong id="status-text">not sure ♡ just ask</strong><small id="status-when"></small></p>
+            <div class="status-invites" id="status-invites">
+              <button type="button" data-invite="library">come to the library?</button>
+              <button type="button" data-invite="coffee">coffee break?</button>
+              <button type="button" data-invite="call">call me?</button>
+            </div>
+            <p class="status-sent" id="status-sent" role="status" aria-live="polite"></p>
           </div>
         </div>
         <div class="hero-art" aria-label="A dreamy pink flower illustration">
@@ -387,7 +396,7 @@
       </div>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
-    <script src="script.js?v=note-comments-3"></script>
+    <script src="script.js?v=my-status"></script>
     <script src="voice-kit.js?v=note-comments-3"></script>
     <script src="voice-notes.js?v=only-for-you"></script>
   </body>

@@ -885,6 +885,105 @@ app.post('/api/notes/:id/comments', requireVoice, limitAyeshaSending, (req, res)
   res.status(201).json({ ok: true, comment: { text, createdAt } });
 });
 
+// ---- His status for her ("free · at home"), set by Zohaib's iPhone Shortcuts (with a secret key) or by hand in admin.
+// Shortcuts send one word; each word sets a status that ends on its own, so it is never stale. Only her mailbox login
+// (and the admin) can read it, and she can send a one-tap invite that buzzes his phone and lands in the mailbox.
+const statusPresets = {
+  home: { label: 'free', place: 'at home', tone: 'free', at: 'home', hours: 10 },
+  school: { label: 'at school', place: '', tone: 'away', at: 'school', hours: 8 },
+  'free-school': { label: 'free', place: 'at school', tone: 'free', at: 'school', hours: 2 },
+  work: { label: 'at work', place: '', tone: 'busy', at: 'work', hours: 9 },
+  free: { label: 'free', place: '', tone: 'free', at: '', hours: 2 },
+  chat: { label: 'busy, can chat', place: '', tone: 'chat', at: '', hours: 3 },
+  busy: { label: 'busy', place: '', tone: 'busy', at: '', hours: 3 }
+};
+const statusWords = [...Object.keys(statusPresets), 'leave-home', 'leave-school', 'leave-work', 'clear'];
+const statusInvites = { library: 'come to the library? 📚', coffee: 'coffee break? ☕', call: 'call me? 📞' };
+const inviteTimes = [];
+const lastInviteByKind = new Map();
+
+function savedStatus() {
+  try {
+    return JSON.parse(readSetting('zohaib_status') || 'null');
+  } catch (error) {
+    return null;
+  }
+}
+
+function readStatus() {
+  const saved = savedStatus();
+  const preset = statusPresets[saved?.key];
+  if (!preset || !(saved.expiresAt > Date.now())) return null;
+  return { key: saved.key, label: preset.label, place: preset.place, tone: preset.tone, setAt: saved.setAt, expiresAt: saved.expiresAt };
+}
+
+// "leave-home" and friends only clear a status that came from that place, so a late "left home" can't wipe "at school".
+function applyStatus(word) {
+  if (word === 'clear') {
+    saveSetting.run('zohaib_status', '');
+  } else if (word.startsWith('leave-')) {
+    if (statusPresets[savedStatus()?.key]?.at === word.slice('leave-'.length)) saveSetting.run('zohaib_status', '');
+  } else {
+    const now = Date.now();
+    saveSetting.run('zohaib_status', JSON.stringify({ key: word, setAt: now, expiresAt: now + statusPresets[word].hours * 60 * 60 * 1000 }));
+  }
+  return readStatus();
+}
+
+// The iPhone's key is kept only as a hash; it can set the status and nothing else.
+function hasStatusKey(req) {
+  const stored = readSetting('status_key_hash');
+  const given = req.get('X-Status-Key');
+  if (!stored || typeof given !== 'string' || !given.trim()) return false;
+  const actual = Buffer.from(hashToken(given.trim()));
+  const expected = Buffer.from(stored);
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+app.post('/api/status', (req, res) => {
+  if (!hasStatusKey(req) && !hasSession(req, 'ayesha_admin', 'admin')) return res.status(401).json({ error: 'That status key is not right.' });
+  const word = typeof req.body?.set === 'string' ? req.body.set.trim().toLowerCase() : '';
+  if (!statusWords.includes(word)) return res.status(400).json({ error: `Send one of: ${statusWords.join(', ')}.` });
+  res.json({ ok: true, status: applyStatus(word) });
+});
+
+app.get('/api/status', (req, res) => {
+  if (!canSeePrivate(req)) return res.status(401).json({ error: 'Please enter your mailbox password.' });
+  res.set('Cache-Control', 'private, no-store');
+  res.json({ status: readStatus() });
+});
+
+app.post('/api/status/invite', requireVoice, (req, res) => {
+  const kind = typeof req.body?.kind === 'string' ? req.body.kind : '';
+  if (!statusInvites[kind]) return res.status(400).json({ error: 'That invite is not one of the buttons.' });
+  const now = Date.now();
+  while (inviteTimes.length && now - inviteTimes[0] > 60 * 60 * 1000) inviteTimes.shift();
+  if (inviteTimes.length >= 12 || now - (lastInviteByKind.get(kind) || 0) < 2 * 60 * 1000) {
+    return res.status(429).json({ error: 'already sent ♡ give it a minute' });
+  }
+  inviteTimes.push(now);
+  lastInviteByKind.set(kind, now);
+  db.prepare("INSERT INTO voice_messages (sender, kind, body) VALUES ('ayesha', 'text', ?)").run(statusInvites[kind]);
+  sendPhoneAlert(req, `Ayesha: ${statusInvites[kind]}`, 'sparkling_heart');
+  res.status(201).json({ ok: true });
+});
+
+app.get('/api/admin/status', requireAdmin, (req, res) => {
+  res.json({ status: readStatus(), keyConfigured: Boolean(readSetting('status_key_hash')) });
+});
+
+// A new key replaces the old one (the old key stops working at once). It is shown once, here.
+app.post('/api/admin/status/key', requireAdmin, (req, res) => {
+  const key = crypto.randomBytes(24).toString('hex');
+  saveSetting.run('status_key_hash', hashToken(key));
+  res.status(201).json({ key });
+});
+
+app.delete('/api/admin/status/key', requireAdmin, (req, res) => {
+  saveSetting.run('status_key_hash', '');
+  res.status(204).end();
+});
+
 app.put('/api/notes/:id/like', requireVoice, (req, res) => {
   const note = sealedNote(Number(req.params.id));
   if (!note) return res.status(404).json({ error: 'That note could not be found.' });

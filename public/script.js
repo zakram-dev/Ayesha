@@ -369,6 +369,55 @@ loadCategories();
 // Once the mailbox knows she is signed in (on load, or after she unlocks it), any sealed card opens up.
 window.addEventListener('mailbox:unread', () => { if (noteGrid.querySelector('.is-sealed')) loadCategories(); });
 
+// ---- His status, only for her: "he's free · at home · 12 min ago", set by his phone. It shows once the mailbox knows
+// she is signed in, and refreshes whenever the mailbox checks in (about every 45 seconds while the page is open).
+// The invite buttons buzz his phone and land in the mailbox.
+const hisStatus = document.querySelector('#his-status');
+const statusSent = document.querySelector('#status-sent');
+
+function timeAgo(timestamp) {
+  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+}
+
+async function loadHisStatus() {
+  try {
+    const response = await fetch('/api/status');
+    if (!response.ok) return;
+    const { status } = await response.json();
+    hisStatus.dataset.tone = status?.tone || 'unknown';
+    document.querySelector('#status-text').textContent = status
+      ? `he's ${status.label}${status.place ? ` · ${status.place}` : ''}`
+      : 'not sure ♡ just ask';
+    document.querySelector('#status-when').textContent = status ? timeAgo(status.setAt) : '';
+    hisStatus.hidden = false;
+  } catch (error) {
+    // Offline for a moment: keep showing the last status.
+  }
+}
+
+window.addEventListener('mailbox:unread', loadHisStatus);
+
+document.querySelector('#status-invites').addEventListener('click', async event => {
+  const button = event.target.closest('[data-invite]');
+  if (!button) return;
+  statusSent.textContent = 'sending…';
+  try {
+    const response = await fetch('/api/status/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: button.dataset.invite })
+    });
+    const body = await response.json().catch(() => ({}));
+    statusSent.textContent = response.ok ? 'sent ♡' : (body.error || 'that did not send, try again?');
+  } catch (error) {
+    statusSent.textContent = 'that did not send, try again?';
+  }
+});
+
 function shouldShowMainQuote(frequency) {
   if (frequency === 'always') return true;
   if (frequency === 'day') return localStorage.getItem('mainQuoteShownOn') !== new Date().toISOString().slice(0, 10);
