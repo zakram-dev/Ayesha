@@ -132,4 +132,11 @@
     startMailChecks();
   }).catch(() => {});
   document.addEventListener('visibilitychange', () => { if (!document.hidden && mailTimer) checkForMail(); });
+  // Opening the sealed "only for you" card signs her in too; pick that up so new replies show straight away.
+  window.addEventListener('mailbox:signed-in', () => {
+    request('/api/voice/session').then(session => {
+      showBadge(session.unread);
+      startMailChecks();
+    }).catch(() => {});
+  });
 })();

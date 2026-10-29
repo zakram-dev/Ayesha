@@ -112,6 +112,10 @@ const categoryColumns = db.prepare('PRAGMA table_info(categories)').all();
 if (!categoryColumns.some(column => column.name === 'card_title')) {
   db.exec('ALTER TABLE categories ADD COLUMN card_title TEXT');
 }
+// Private ("only for her") categories: their quotes are only sent to her mailbox login (or the admin).
+if (!categoryColumns.some(column => column.name === 'private')) {
+  db.exec('ALTER TABLE categories ADD COLUMN private INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0, 1))');
+}
 
 const quoteColumns = db.prepare('PRAGMA table_info(quotes)').all();
 if (!quoteColumns.some(column => column.name === 'status')) {
@@ -234,5 +238,18 @@ const moveKindNotesToMailbox = db.transaction(() => {
 });
 
 moveKindNotesToMailbox();
+
+// One-time: an empty, sealed "Only for you" category, ready for Zohaib to fill in admin. (If he deletes it, it stays gone.)
+const addOnlyForYou = db.transaction(() => {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'only_for_you_added'").get()) return;
+  db.prepare(`
+    INSERT INTO categories (name, slug, card_title, description, color, private)
+    VALUES ('Only for you', 'only-for-you', 'Only for you', 'Sealed with love, for your eyes only.', 'rose', 1)
+    ON CONFLICT(slug) DO NOTHING
+  `).run();
+  db.prepare("INSERT INTO settings (key, value) VALUES ('only_for_you_added', '1')").run();
+});
+
+addOnlyForYou();
 
 module.exports = db;

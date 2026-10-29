@@ -3,6 +3,12 @@ const label = document.querySelector('#modal-label');
 const title = document.querySelector('#modal-title');
 const text = document.querySelector('#modal-message');
 const noteGrid = document.querySelector('.note-grid');
+const anotherNote = document.querySelector('#another-note');
+const modalStar = modal.querySelector('.modal-star');
+const sealForm = document.querySelector('#seal-form');
+const sealPassword = document.querySelector('#seal-password');
+const sealStatus = document.querySelector('#seal-status');
+const privateMoods = new Set();
 let activeMood = 'welcome';
 let activeQuote = null;
 
@@ -52,7 +58,12 @@ async function fetchQuote(mood) {
   const recentQuotes = getRecentQuotes(mood);
   const exclude = recentQuotes.length ? `&exclude=${recentQuotes.join(',')}` : '';
   const response = await fetch(`/api/quotes/random?category=${encodeURIComponent(mood)}${exclude}`);
-  if (!response.ok) throw new Error('The quote could not be loaded right now.');
+  if (!response.ok) {
+    const error = new Error('The quote could not be loaded right now.');
+    error.sealed = response.status === 401;
+    error.empty = response.status === 404;
+    throw error;
+  }
   const quote = await response.json();
   rememberQuote(mood, quote.id);
   return quote;
@@ -103,14 +114,19 @@ function categoryDescription(category) {
   return category.description || `A little note for a ${category.name.toLowerCase()} moment.`;
 }
 
+// Private ("only for you") categories show as a sealed letter with a wax seal. Its notes only come from the server once
+// she is signed in with the mailbox password, so the card itself never holds them.
 function renderCategories(categories) {
   const visibleCategories = categories.filter(category => !['welcome', 'distract'].includes(category.slug));
+  privateMoods.clear();
+  categories.filter(category => category.private).forEach(category => privateMoods.add(category.slug));
   noteGrid.innerHTML = visibleCategories.length
     ? visibleCategories.map(category => `
-      <button class="mood-card ${categoryClass(category.color)}" data-mood="${escapeHtml(category.slug)}" data-category-id="${category.id}" data-track="mood-${escapeHtml(category.slug)}">
-        <span class="card-icon">${categoryIcon(category.slug)}</span>
+      <button class="mood-card ${category.private ? 'sealed-card' : categoryClass(category.color)}${category.sealed ? ' is-sealed' : ''}" data-mood="${escapeHtml(category.slug)}" data-category-id="${category.id}" data-track="mood-${escapeHtml(category.slug)}">
+        <span class="card-icon">${category.private ? '<span class="wax-seal" aria-hidden="true">♥</span>' : categoryIcon(category.slug)}</span>
         <strong>${escapeHtml(category.card_title || `A little ${category.name.toLowerCase()}`)}</strong>
         <small>${escapeHtml(categoryDescription(category))}</small>
+        ${category.private ? `<em class="seal-note">${category.sealed ? '🔒 sealed, just for Ayesha' : '♡ open it'}</em>` : ''}
         <i>→</i>
       </button>`).join('')
     : '<p class="notes-loading">There are no feeling categories yet.</p>';
@@ -121,11 +137,21 @@ function renderCategories(categories) {
   }));
 }
 
+// The message card turns into a velvet letter for private notes.
+function setModalLook(isPrivate) {
+  modal.classList.toggle('is-private', isPrivate);
+  modalStar.textContent = isPrivate ? '♥' : '✦';
+  sealForm.hidden = true;
+  anotherNote.hidden = false;
+}
+
 async function showMessage(mood = 'welcome') {
   activeMood = mood;
   const distract = mood === 'distract';
-  label.textContent = distract ? 'a lovely little detour' : 'a small note for Ayesha';
-  title.textContent = distract ? 'A pause, just for you.' : 'Here is a little something.';
+  const isPrivate = privateMoods.has(mood);
+  setModalLook(isPrivate);
+  label.textContent = isPrivate ? 'only for you' : distract ? 'a lovely little detour' : 'a small note for Ayesha';
+  title.textContent = isPrivate ? 'Sealed with love.' : distract ? 'A pause, just for you.' : 'Here is a little something.';
   text.textContent = 'Finding a little something...';
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
@@ -133,13 +159,48 @@ async function showMessage(mood = 'welcome') {
   try {
     activeQuote = await fetchQuote(mood);
     text.textContent = activeQuote.text;
+    if (isPrivate) replayClass(modal.querySelector('.modal-card'), 'unsealed');
     recordEvent('message-viewed', { mood, quoteId: activeQuote.id, categoryId: activeQuote.category_id });
   } catch (error) {
     activeQuote = null;
-    text.textContent = 'The notes are taking a tiny pause. Please try again in a moment.';
+    if (error.sealed) return showSeal();
+    text.textContent = error.empty && isPrivate
+      ? 'Nothing sealed in here yet… soon ♡'
+      : 'The notes are taking a tiny pause. Please try again in a moment.';
     console.warn('Unable to load quote.', error);
   }
 }
+
+// A sealed note asks for the mailbox password once; that also signs her in to the mailbox.
+function showSeal() {
+  title.textContent = 'This one is sealed ♡';
+  text.textContent = 'It opens with the password to our little mailbox.';
+  sealForm.hidden = false;
+  anotherNote.hidden = true;
+  sealStatus.textContent = '';
+  sealPassword.value = '';
+  sealPassword.focus({ preventScroll: true });
+}
+
+sealForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  sealStatus.textContent = 'Checking…';
+  try {
+    const response = await fetch('/api/voice/unlock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: sealPassword.value })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'That password did not open it.');
+    sealPassword.value = '';
+    window.dispatchEvent(new CustomEvent('mailbox:signed-in'));
+    loadCategories();
+    showMessage(activeMood);
+  } catch (error) {
+    sealStatus.textContent = error.message;
+  }
+});
 
 function getSeenPopupQuotes() {
   try {
@@ -172,6 +233,7 @@ async function showMainQuote() {
     await new Promise(resolve => window.setTimeout(resolve, quote.popup.delay));
     activeMood = quote.category.slug;
     activeQuote = quote;
+    setModalLook(false);
     label.textContent = 'a little welcome for you';
     title.textContent = 'A thought to start with.';
     text.textContent = quote.text;
@@ -199,10 +261,16 @@ function closeModal() {
   modal.setAttribute('aria-hidden', 'true');
 }
 
-fetchCategories().then(renderCategories).catch(error => {
-  noteGrid.innerHTML = '<p class="notes-loading">The feelings are taking a tiny pause. Please try again soon.</p>';
-  console.warn('Unable to load categories.', error);
-});
+function loadCategories() {
+  fetchCategories().then(renderCategories).catch(error => {
+    noteGrid.innerHTML = '<p class="notes-loading">The feelings are taking a tiny pause. Please try again soon.</p>';
+    console.warn('Unable to load categories.', error);
+  });
+}
+
+loadCategories();
+// Once the mailbox knows she is signed in (on load, or after she unlocks it), any sealed card opens up.
+window.addEventListener('mailbox:unread', () => { if (noteGrid.querySelector('.is-sealed')) loadCategories(); });
 
 function shouldShowMainQuote(frequency) {
   if (frequency === 'always') return true;

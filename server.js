@@ -94,16 +94,24 @@ app.post('/api/events', (req, res) => {
   res.status(204).end();
 });
 
+// Private categories show on the page as sealed cards for everyone; their quotes only go to her mailbox login or the admin.
+function canSeePrivate(req) {
+  return hasSession(req, 'ayesha_voice', 'voice') || hasSession(req, 'ayesha_admin', 'admin');
+}
+
 app.get('/api/categories', (req, res) => {
+  const unlocked = canSeePrivate(req);
   const categories = db.prepare(`
     SELECT id, name, slug,
       COALESCE(NULLIF(TRIM(card_title), ''), 'A little ' || LOWER(name)) AS card_title,
-      description, color
+      description, color, private
     FROM categories
     WHERE active = 1
     ORDER BY id
-  `).all();
+  `).all().map(category => ({ ...category, private: Boolean(category.private), sealed: Boolean(category.private) && !unlocked }));
 
+  // Whether a card is sealed depends on who is asking, so no shared cache may keep this.
+  res.set('Cache-Control', 'private, no-store');
   res.json(categories);
 });
 
@@ -290,8 +298,8 @@ app.put('/api/admin/settings', requireAdmin, (req, res) => {
   if (!['rotate', 'pinned'].includes(mode)) {
     return res.status(400).json({ error: 'Popup quote choice is invalid.' });
   }
-  if (!Number.isInteger(poolCategoryId) || !db.prepare('SELECT id FROM categories WHERE id = ?').get(poolCategoryId)) {
-    return res.status(400).json({ error: 'Choose a category to rotate through.' });
+  if (!Number.isInteger(poolCategoryId) || !db.prepare('SELECT id FROM categories WHERE id = ? AND private = 0').get(poolCategoryId)) {
+    return res.status(400).json({ error: 'Choose a category to rotate through (private categories never pop up).' });
   }
   let pinnedUntil;
   try {
@@ -316,7 +324,7 @@ app.get('/api/admin/categories', requireAdmin, (req, res) => {
   res.json(db.prepare(`
     SELECT c.id, c.name, c.slug,
       COALESCE(NULLIF(TRIM(c.card_title), ''), 'A little ' || LOWER(c.name)) AS card_title,
-      c.description, c.color, c.active,
+      c.description, c.color, c.active, c.private,
       COUNT(q.id) AS quote_count
     FROM categories c
     LEFT JOIN quotes q ON q.category_id = c.id
@@ -334,9 +342,9 @@ app.post('/api/admin/categories', requireAdmin, (req, res) => {
     const cardTitle = cleanText(req.body?.cardTitle, 'Card title', { required: false, maxLength: 120 })
       || `A little ${name.toLowerCase()}`;
     const result = db.prepare(`
-      INSERT INTO categories (name, slug, card_title, description, color)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(name, slug, cardTitle, cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 }), cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 }));
+      INSERT INTO categories (name, slug, card_title, description, color, private)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, slug, cardTitle, cleanText(req.body?.description, 'Description', { required: false, maxLength: 300 }), cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 }), parseBoolean(req.body?.private) ? 1 : 0);
     res.status(201).json({ id: result.lastInsertRowid });
   } catch (error) {
     res.status(400).json({ error: error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'That category name or slug already exists.' : error.message });
@@ -357,9 +365,9 @@ app.put('/api/admin/categories/:id', requireAdmin, (req, res) => {
     const color = cleanText(req.body?.color, 'Color', { required: false, maxLength: 40 });
     const result = db.prepare(`
       UPDATE categories
-      SET name = ?, slug = ?, card_title = ?, description = ?, color = ?, active = ?, updated_at = CURRENT_TIMESTAMP
+      SET name = ?, slug = ?, card_title = ?, description = ?, color = ?, active = ?, private = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(name, slug, cardTitle, description, color, parseBoolean(req.body?.active, true) ? 1 : 0, id);
+    `).run(name, slug, cardTitle, description, color, parseBoolean(req.body?.active, true) ? 1 : 0, parseBoolean(req.body?.private) ? 1 : 0, id);
     if (!result.changes) return res.status(404).json({ error: 'Category not found.' });
     res.json({ ok: true });
   } catch (error) {
@@ -460,6 +468,11 @@ app.delete('/api/admin/quotes/:id', requireAdmin, (req, res) => {
 
 app.get('/api/quotes/random', (req, res) => {
   const category = typeof req.query.category === 'string' ? req.query.category : 'welcome';
+  const isPrivate = Boolean(db.prepare('SELECT private FROM categories WHERE slug = ?').get(category)?.private);
+  if (isPrivate) {
+    res.set('Cache-Control', 'private, no-store');
+    if (!canSeePrivate(req)) return res.status(401).json({ error: 'This one is sealed.', sealed: true });
+  }
   const excludedIds = parseIdList(req.query.exclude, 10);
   const exclusionClause = excludedIds.length ? `AND q.id NOT IN (${excludedIds.map(() => '?').join(',')})` : '';
   const quote = db.prepare(`
@@ -614,7 +627,7 @@ const popupQuoteQuery = `
   SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
   FROM quotes q
   JOIN categories c ON c.id = q.category_id
-  WHERE q.active = 1 AND q.status = 'active' AND c.active = 1
+  WHERE q.active = 1 AND q.status = 'active' AND c.active = 1 AND c.private = 0
 `;
 
 app.get('/api/quotes/main', (req, res) => {

@@ -46,7 +46,7 @@ function renderQuotes() {
 }
 
 function renderCategories() {
-  document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="add-quote" data-id="${category.id}">Add quote</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
+  document.querySelector('#categories').innerHTML = categories.map(category => `<tr><td>${escapeHtml(category.name)}${category.private ? '<b class="badge private-badge">🔒 only for her</b>' : ''}<small class="category-card-title">${escapeHtml(category.card_title || '')}</small></td><td>${escapeHtml(category.slug)}</td><td>${category.quote_count}</td><td>${category.active ? 'Active' : 'Inactive'}</td><td><button class="small-button" data-action="edit-category" data-id="${category.id}">Edit</button> <button class="small-button" data-action="add-quote" data-id="${category.id}">Add quote</button> <button class="small-button" data-action="toggle-category" data-id="${category.id}">${category.active ? 'Deactivate' : 'Activate'}</button> <button class="small-button danger" data-action="delete-category" data-id="${category.id}">Delete</button></td></tr>`).join('');
 }
 
 function renderPopupSettings() {
@@ -259,6 +259,7 @@ async function loadData() {
   document.querySelector('#popup-frequency').value = settings.frequency;
   document.querySelector('#popup-mode').value = settings.mode;
   document.querySelector('#popup-pool').innerHTML = categories
+    .filter(category => !category.private)
     .map(category => `<option value="${category.id}">${escapeHtml(category.name)} (${category.quote_count} quote${category.quote_count === 1 ? '' : 's'}${category.active ? '' : ', inactive'})</option>`).join('');
   document.querySelector('#popup-pool').value = String(settings.poolCategoryId);
   document.querySelector('#popup-pinned-until').value = settings.pinnedUntil;
@@ -324,7 +325,8 @@ document.querySelector('#category-form').addEventListener('submit', async event 
       cardTitle: document.querySelector('#category-card-title').value,
       description: document.querySelector('#category-description').value,
       color: document.querySelector('#category-color').value,
-      active: document.querySelector('#category-active')?.checked ?? true
+      active: editingCategoryId ? Boolean(categories.find(item => item.id === editingCategoryId)?.active) : true,
+      private: document.querySelector('#category-private').checked
     };
     await request(editingCategoryId ? `/api/admin/categories/${editingCategoryId}` : '/api/admin/categories', {
       method: editingCategoryId ? 'PUT' : 'POST', body: JSON.stringify(payload)
@@ -391,13 +393,14 @@ document.querySelector('#categories').addEventListener('click', async event => {
       document.querySelector('#category-card-title').value = category.card_title || '';
       document.querySelector('#category-description').value = category.description || '';
       document.querySelector('#category-color').value = category.color || '';
+      document.querySelector('#category-private').checked = Boolean(category.private);
       document.querySelector('#category-submit').textContent = 'Save changes';
       document.querySelector('#category-cancel').hidden = false;
       window.scrollTo({ top: document.querySelector('#category-form').offsetTop, behavior: 'smooth' });
       return;
     }
     if (button.dataset.action === 'delete-category' && confirm('Delete this category?')) await request(`/api/admin/categories/${category.id}`, { method: 'DELETE' });
-    if (button.dataset.action === 'toggle-category') await request(`/api/admin/categories/${category.id}`, { method: 'PUT', body: JSON.stringify({ ...category, active: !category.active }) });
+    if (button.dataset.action === 'toggle-category') await request(`/api/admin/categories/${category.id}`, { method: 'PUT', body: JSON.stringify({ ...category, cardTitle: category.card_title, active: !category.active }) });
     await loadData();
     showStatus('Category updated.');
   } catch (error) {

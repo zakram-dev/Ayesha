@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=wardrobe-3" />
+    <link rel="stylesheet" href="styles.css?v=only-for-you" />
   </head>
   <body>
     <div class="announcement" id="announcement" role="region" aria-label="What's new" hidden>
@@ -299,6 +299,11 @@
         <p class="modal-label" id="modal-label">a small note for Ayesha</p>
         <h3 id="modal-title">Here is a little something.</h3>
         <p id="modal-message"></p>
+        <form class="seal-form" id="seal-form" hidden>
+          <label>Our mailbox password <input id="seal-password" type="password" autocomplete="current-password" required /></label>
+          <button class="primary-btn" type="submit">Open it <span>♡</span></button>
+          <p class="seal-status" id="seal-status" role="status"></p>
+        </form>
         <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
       </div>
     </div>
@@ -367,8 +372,8 @@
       </div>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
-    <script src="script.js?v=wardrobe-3"></script>
+    <script src="script.js?v=only-for-you"></script>
     <script src="voice-kit.js?v=voice-notes"></script>
-    <script src="voice-notes.js?v=bunny-mail"></script>
+    <script src="voice-notes.js?v=only-for-you"></script>
   </body>
 </html>
