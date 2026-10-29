@@ -17,8 +17,9 @@
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   }
 
+  // Saved times come from SQLite as "YYYY-MM-DD HH:MM:SS" in UTC; a full ISO time (with T and a zone) is read as it is.
   function formatWhen(createdAt) {
-    const date = new Date(`${createdAt.replace(' ', 'T')}Z`);
+    const date = new Date(createdAt.includes('T') ? createdAt : `${createdAt.replace(' ', 'T')}Z`);
     return date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 

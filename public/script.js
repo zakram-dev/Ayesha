@@ -233,7 +233,7 @@ noteComment.addEventListener('submit', async event => {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || 'That did not send. Please try again.');
     noteCommentText.value = '';
-    noteComments.push({ text: comment, createdAt: new Date().toISOString() });
+    noteComments.push(body.comment || { text: comment, createdAt: new Date().toISOString() });
     renderNoteComments();
     noteStatus.textContent = 'sent ♡';
   } catch (error) {

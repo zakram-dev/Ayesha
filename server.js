@@ -878,10 +878,11 @@ app.post('/api/notes/:id/comments', requireVoice, limitAyeshaSending, (req, res)
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
-  db.prepare("INSERT INTO voice_messages (sender, kind, body, quote_id) VALUES ('ayesha', 'text', ?, ?)").run(text, note.id);
+  const saved = db.prepare("INSERT INTO voice_messages (sender, kind, body, quote_id) VALUES ('ayesha', 'text', ?, ?)").run(text, note.id);
   ayeshaSendTimes.push(Date.now());
   sendPhoneAlert(req, 'Ayesha wrote back on one of your notes 💬', 'speech_balloon');
-  res.status(201).json({ ok: true });
+  const createdAt = db.prepare('SELECT created_at FROM voice_messages WHERE id = ?').get(saved.lastInsertRowid).created_at;
+  res.status(201).json({ ok: true, comment: { text, createdAt } });
 });
 
 app.put('/api/notes/:id/like', requireVoice, (req, res) => {
