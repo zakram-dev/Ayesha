@@ -122,6 +122,16 @@ if (!quoteColumns.some(column => column.name === 'status')) {
   db.exec("ALTER TABLE quotes ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
   db.prepare("UPDATE quotes SET status = CASE WHEN active = 1 THEN 'active' ELSE 'archived' END").run();
 }
+// When Ayesha ♡ one of the sealed notes.
+if (!quoteColumns.some(column => column.name === 'liked_at')) {
+  db.exec('ALTER TABLE quotes ADD COLUMN liked_at TEXT');
+}
+
+// Her comments on sealed notes are mailbox messages that remember which note they are about.
+const voiceMessageColumns = db.prepare('PRAGMA table_info(voice_messages)').all();
+if (!voiceMessageColumns.some(column => column.name === 'quote_id')) {
+  db.exec('ALTER TABLE voice_messages ADD COLUMN quote_id INTEGER');
+}
 
 const seedCategories = db.prepare(`
   INSERT INTO categories (name, slug, card_title, description, color)

@@ -42,7 +42,7 @@ function renderQuotes() {
   document.querySelector('#quotes').innerHTML = quotes
     .filter(quote => (!categoryFilter || String(quote.category_id) === categoryFilter)
       && (quote.text.toLowerCase().includes(search) || quote.category_name.toLowerCase().includes(search)))
-    .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">pinned</b>' : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${escapeHtml(quote.status || (quote.active ? 'active' : 'archived'))}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.status === 'active' ? 'Archive' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
+    .map(quote => `<tr><td>${escapeHtml(quote.text)}${quote.is_main_quote ? '<b class="badge">pinned</b>' : ''}${quote.liked_at ? '<b class="badge private-badge">♡ she loved this</b>' : ''}${quote.comment_count ? `<b class="badge private-badge">💬 ${quote.comment_count}</b>` : ''}</td><td>${escapeHtml(quote.category_name)}</td><td>${escapeHtml(quote.status || (quote.active ? 'active' : 'archived'))}</td><td><button class="small-button" data-action="edit-quote" data-id="${quote.id}">Edit</button> <button class="small-button" data-action="toggle-quote" data-id="${quote.id}">${quote.status === 'active' ? 'Archive' : 'Activate'}</button> <button class="small-button danger" data-action="delete-quote" data-id="${quote.id}">Delete</button></td></tr>`).join('');
 }
 
 function renderCategories() {

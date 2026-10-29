@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=only-for-you" />
+    <link rel="stylesheet" href="styles.css?v=note-comments" />
   </head>
   <body>
     <div class="announcement" id="announcement" role="region" aria-label="What's new" hidden>
@@ -304,7 +304,22 @@
           <button class="primary-btn" type="submit">Open it <span>♡</span></button>
           <p class="seal-status" id="seal-status" role="status"></p>
         </form>
+        <div class="note-react" id="note-react" hidden>
+          <p class="note-said" id="note-said" hidden></p>
+          <form class="note-comment" id="note-comment" hidden>
+            <textarea id="note-comment-text" maxlength="500" rows="3" placeholder="what did this one make you feel? ♡" aria-label="Write back about this note" required></textarea>
+            <div class="note-comment-row">
+              <button class="text-btn" id="note-comment-cancel" type="button">never mind</button>
+              <button class="primary-btn" type="submit">send to Zohaib <span>→</span></button>
+            </div>
+          </form>
+          <p class="note-status" id="note-status" role="status" aria-live="polite"></p>
+        </div>
         <button class="text-btn modal-next" id="another-note">one more note <span>→</span></button>
+        <div class="note-icons" id="note-icons" hidden>
+          <button class="note-icon note-like" id="note-like" type="button" aria-pressed="false" aria-label="Love this note">♡</button>
+          <button class="note-icon" id="note-comment-open" type="button" aria-expanded="false" aria-controls="note-comment" aria-label="Write back about this note">💬</button>
+        </div>
       </div>
     </div>
     <div class="modal" id="voice-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="voice-modal-title">
@@ -372,8 +387,8 @@
       </div>
       <button class="text-btn" id="clear-insights" type="button">clear local insights</button>
     </section>
-    <script src="script.js?v=only-for-you"></script>
-    <script src="voice-kit.js?v=voice-notes"></script>
+    <script src="script.js?v=note-comments"></script>
+    <script src="voice-kit.js?v=note-comments"></script>
     <script src="voice-notes.js?v=only-for-you"></script>
   </body>
 </html>

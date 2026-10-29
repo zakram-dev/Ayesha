@@ -8,6 +8,14 @@ const modalStar = modal.querySelector('.modal-star');
 const sealForm = document.querySelector('#seal-form');
 const sealPassword = document.querySelector('#seal-password');
 const sealStatus = document.querySelector('#seal-status');
+const noteReact = document.querySelector('#note-react');
+const noteIcons = document.querySelector('#note-icons');
+const noteLike = document.querySelector('#note-like');
+const noteCommentOpen = document.querySelector('#note-comment-open');
+const noteComment = document.querySelector('#note-comment');
+const noteCommentText = document.querySelector('#note-comment-text');
+const noteSaid = document.querySelector('#note-said');
+const noteStatus = document.querySelector('#note-status');
 const privateMoods = new Set();
 let activeMood = 'welcome';
 let activeQuote = null;
@@ -143,7 +151,80 @@ function setModalLook(isPrivate) {
   modalStar.textContent = isPrivate ? '♥' : '✦';
   sealForm.hidden = true;
   anotherNote.hidden = false;
+  showReactions(null);
 }
+
+// On a sealed note she (signed in) can ♡ it or write back to Zohaib; what she said last time shows under it.
+function showReactions(reactions) {
+  noteIcons.hidden = !reactions;
+  noteReact.hidden = !reactions;
+  noteComment.hidden = true;
+  noteCommentOpen.setAttribute('aria-expanded', 'false');
+  noteStatus.textContent = '';
+  if (!reactions) return;
+  setLiked(reactions.liked);
+  noteSaid.hidden = !reactions.lastComment;
+  noteSaid.textContent = reactions.lastComment ? `you said: “${reactions.lastComment}”` : '';
+}
+
+function setLiked(liked) {
+  noteLike.setAttribute('aria-pressed', String(liked));
+  noteLike.setAttribute('aria-label', liked ? 'You love this note (tap to undo)' : 'Love this note');
+  noteLike.textContent = liked ? '♥' : '♡';
+}
+
+noteLike.addEventListener('click', async () => {
+  if (!activeQuote) return;
+  const liked = noteLike.getAttribute('aria-pressed') !== 'true';
+  setLiked(liked);
+  if (liked) replayClass(noteLike, 'pop');
+  try {
+    const response = await fetch(`/api/notes/${activeQuote.id}/like`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ liked })
+    });
+    if (!response.ok) throw new Error('not saved');
+    noteStatus.textContent = liked ? 'Zohaib will see you loved this one ♡' : '';
+  } catch (error) {
+    setLiked(!liked);
+    noteStatus.textContent = 'That heart did not save. Please try again.';
+  }
+});
+
+function toggleCommentBox(open) {
+  noteComment.hidden = !open;
+  noteCommentOpen.setAttribute('aria-expanded', String(open));
+  noteStatus.textContent = '';
+  if (open) noteCommentText.focus();
+}
+
+noteCommentOpen.addEventListener('click', () => toggleCommentBox(noteComment.hidden));
+document.querySelector('#note-comment-cancel').addEventListener('click', () => toggleCommentBox(false));
+
+// Her comment lands in Zohaib's mailbox with the note quoted above it (and buzzes his phone).
+noteComment.addEventListener('submit', async event => {
+  event.preventDefault();
+  const comment = noteCommentText.value.trim();
+  if (!activeQuote || !comment) return;
+  noteStatus.textContent = 'Sending…';
+  try {
+    const response = await fetch(`/api/notes/${activeQuote.id}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: comment })
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || 'That did not send. Please try again.');
+    noteCommentText.value = '';
+    toggleCommentBox(false);
+    noteSaid.hidden = false;
+    noteSaid.textContent = `you said: “${comment}”`;
+    noteStatus.textContent = "sent to Zohaib's mailbox ♡";
+  } catch (error) {
+    noteStatus.textContent = error.message;
+  }
+});
 
 async function showMessage(mood = 'welcome') {
   activeMood = mood;
@@ -160,6 +241,7 @@ async function showMessage(mood = 'welcome') {
     activeQuote = await fetchQuote(mood);
     text.textContent = activeQuote.text;
     if (isPrivate) replayClass(modal.querySelector('.modal-card'), 'unsealed');
+    showReactions(isPrivate ? activeQuote.reactions || null : null);
     recordEvent('message-viewed', { mood, quoteId: activeQuote.id, categoryId: activeQuote.category_id });
   } catch (error) {
     activeQuote = null;

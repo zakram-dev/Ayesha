@@ -387,7 +387,8 @@ app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
 app.get('/api/admin/quotes', requireAdmin, (req, res) => {
   res.json(db.prepare(`
     SELECT q.id, q.text, q.author, q.active, q.status, q.is_main_quote, q.display_order,
-      q.category_id, c.name AS category_name, c.slug AS category_slug
+      q.category_id, c.name AS category_name, c.slug AS category_slug, q.liked_at,
+      (SELECT COUNT(*) FROM voice_messages m WHERE m.quote_id = q.id) AS comment_count
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
     ORDER BY q.display_order, q.id
@@ -498,7 +499,9 @@ app.get('/api/quotes/random', (req, res) => {
     id: fallback.id,
     text: fallback.text,
     author: fallback.author,
-    category: { id: fallback.category_id, name: fallback.category_name, slug: fallback.category_slug }
+    category: { id: fallback.category_id, name: fallback.category_name, slug: fallback.category_slug },
+    // Only she (signed in to the mailbox) can ♡ or comment, so only she gets these.
+    ...(isPrivate && hasSession(req, 'ayesha_voice', 'voice') ? { reactions: noteReactions(fallback.id) } : {})
   });
 });
 
@@ -688,13 +691,17 @@ function listVoiceMessages(reader) {
   db.prepare('UPDATE voice_messages SET read_at = CURRENT_TIMESTAMP WHERE sender != ? AND read_at IS NULL').run(reader);
   return db.prepare(`
     SELECT * FROM (
-      SELECT id, sender, kind, body, duration_ms, created_at, read_at FROM voice_messages ORDER BY created_at DESC, id DESC LIMIT 200
+      SELECT m.id, m.sender, m.kind, m.body, m.duration_ms, m.created_at, m.read_at, m.quote_id, q.text AS note_text
+      FROM voice_messages m
+      LEFT JOIN quotes q ON q.id = m.quote_id
+      ORDER BY m.created_at DESC, m.id DESC LIMIT 200
     ) ORDER BY created_at, id
   `).all().map(message => ({
     id: message.id,
     sender: message.sender,
     kind: message.kind,
     text: message.body,
+    note: message.quote_id ? (message.note_text || 'a note that has since been removed') : null,
     audioUrl: message.kind === 'voice' ? `/api/voice/audio/${message.id}` : null,
     durationMs: message.duration_ms,
     createdAt: message.created_at,
@@ -836,6 +843,55 @@ app.post('/api/voice/messages', requireVoice, limitAyeshaSending, (req, res) => 
   ayeshaSendTimes.push(Date.now());
   sendPhoneAlert(req, 'Ayesha sent you a little message ✦', 'speech_balloon');
   res.status(201).json({ ok: true });
+});
+
+// ---- Her ♡ and comments on the sealed "only for you" notes. A comment is a mailbox message that remembers its note,
+// so it reaches Zohaib's mailbox (with a phone alert) and he replies there. Only sealed notes take these.
+const likeAlertTimes = new Map();
+
+function sealedNote(id) {
+  if (!Number.isInteger(id)) return null;
+  return db.prepare(`
+    SELECT q.id, q.liked_at FROM quotes q
+    JOIN categories c ON c.id = q.category_id
+    WHERE q.id = ? AND c.private = 1
+  `).get(id) || null;
+}
+
+// What she has already said about a note, shown under it the next time it comes up.
+function noteReactions(id) {
+  const note = sealedNote(id);
+  const lastComment = db.prepare("SELECT body FROM voice_messages WHERE quote_id = ? AND sender = 'ayesha' ORDER BY created_at DESC, id DESC LIMIT 1").get(id);
+  return { liked: Boolean(note?.liked_at), lastComment: lastComment?.body || null };
+}
+
+app.post('/api/notes/:id/comments', requireVoice, limitAyeshaSending, (req, res) => {
+  const note = sealedNote(Number(req.params.id));
+  if (!note) return res.status(404).json({ error: 'That note could not be found.' });
+  let text;
+  try {
+    text = cleanText(req.body?.text, 'Comment', { maxLength: 500 });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  db.prepare("INSERT INTO voice_messages (sender, kind, body, quote_id) VALUES ('ayesha', 'text', ?, ?)").run(text, note.id);
+  ayeshaSendTimes.push(Date.now());
+  sendPhoneAlert(req, 'Ayesha wrote back on one of your notes 💬', 'speech_balloon');
+  res.status(201).json({ ok: true });
+});
+
+app.put('/api/notes/:id/like', requireVoice, (req, res) => {
+  const note = sealedNote(Number(req.params.id));
+  if (!note) return res.status(404).json({ error: 'That note could not be found.' });
+  const liked = parseBoolean(req.body?.liked);
+  db.prepare(`UPDATE quotes SET liked_at = ${liked ? 'COALESCE(liked_at, CURRENT_TIMESTAMP)' : 'NULL'} WHERE id = ?`).run(note.id);
+  // One buzz per note per hour, however many times the heart is tapped.
+  const lastAlert = likeAlertTimes.get(note.id) || 0;
+  if (liked && !note.liked_at && Date.now() - lastAlert > 60 * 60 * 1000) {
+    likeAlertTimes.set(note.id, Date.now());
+    sendPhoneAlert(req, 'Ayesha ♡ one of your notes', 'heart');
+  }
+  res.json({ liked });
 });
 
 app.post('/api/voice/messages/audio', requireVoice, limitAyeshaSending, audioUpload, (req, res) => {
