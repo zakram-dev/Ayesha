@@ -112,7 +112,7 @@
           : `<p>${escapeHtml(message.text)}</p>`;
         // A comment on one of the sealed notes shows that note above it.
         const note = message.note
-          ? `<blockquote class="voice-note-quote"><small>💬 about the note</small><span>${escapeHtml(message.note)}</span></blockquote>`
+          ? `<blockquote class="voice-note-quote"><small>about the note</small><span>${escapeHtml(message.note)}</span></blockquote>`
           : '';
         return `<article class="voice-message ${mine ? 'mine' : 'theirs'}" data-id="${message.id}">
           <small class="voice-meta">${escapeHtml(names[message.sender])} · ${escapeHtml(formatWhen(message.createdAt))}</small>
@@ -275,5 +275,5 @@
     }
   }
 
-  window.VoiceKit = { attachPlayer, renderThread, mountComposer, uploadVoice, formatDuration };
+  window.VoiceKit = { attachPlayer, renderThread, mountComposer, uploadVoice, formatDuration, formatWhen };
 })();

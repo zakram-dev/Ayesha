@@ -14,8 +14,9 @@ const noteLike = document.querySelector('#note-like');
 const noteCommentOpen = document.querySelector('#note-comment-open');
 const noteComment = document.querySelector('#note-comment');
 const noteCommentText = document.querySelector('#note-comment-text');
-const noteSaid = document.querySelector('#note-said');
+const noteCommentList = document.querySelector('#note-comments');
 const noteStatus = document.querySelector('#note-status');
+let noteComments = [];
 const privateMoods = new Set();
 let activeMood = 'welcome';
 let activeQuote = null;
@@ -154,7 +155,8 @@ function setModalLook(isPrivate) {
   showReactions(null);
 }
 
-// On a sealed note she (signed in) can ♡ it or write back to Zohaib; what she said last time shows under it.
+// On a sealed note she (signed in) can ♡ it or write about it. What she has written stays inside the comment
+// panel (the speech bubble), so the note itself stays clean.
 function showReactions(reactions) {
   noteIcons.hidden = !reactions;
   noteReact.hidden = !reactions;
@@ -163,8 +165,20 @@ function showReactions(reactions) {
   noteStatus.textContent = '';
   if (!reactions) return;
   setLiked(reactions.liked);
-  noteSaid.hidden = !reactions.lastComment;
-  noteSaid.textContent = reactions.lastComment ? `you said: “${reactions.lastComment}”` : '';
+  noteComments = reactions.comments || [];
+}
+
+function renderNoteComments() {
+  noteCommentList.replaceChildren(...noteComments.map(comment => {
+    const item = document.createElement('li');
+    const words = document.createElement('p');
+    const when = document.createElement('small');
+    words.textContent = comment.text;
+    when.textContent = window.VoiceKit?.formatWhen ? window.VoiceKit.formatWhen(comment.createdAt) : '';
+    item.append(words, when);
+    return item;
+  }));
+  noteCommentList.scrollTop = noteCommentList.scrollHeight;
 }
 
 function setLiked(liked) {
@@ -185,7 +199,7 @@ noteLike.addEventListener('click', async () => {
       body: JSON.stringify({ liked })
     });
     if (!response.ok) throw new Error('not saved');
-    noteStatus.textContent = liked ? 'Zohaib will see you loved this one ♡' : '';
+    noteStatus.textContent = '';
   } catch (error) {
     setLiked(!liked);
     noteStatus.textContent = 'That heart did not save. Please try again.';
@@ -196,13 +210,15 @@ function toggleCommentBox(open) {
   noteComment.hidden = !open;
   noteCommentOpen.setAttribute('aria-expanded', String(open));
   noteStatus.textContent = '';
-  if (open) noteCommentText.focus();
+  if (!open) return;
+  renderNoteComments();
+  noteCommentText.focus();
 }
 
 noteCommentOpen.addEventListener('click', () => toggleCommentBox(noteComment.hidden));
 document.querySelector('#note-comment-cancel').addEventListener('click', () => toggleCommentBox(false));
 
-// Her comment lands in Zohaib's mailbox with the note quoted above it (and buzzes his phone).
+// Her comment lands in the mailbox with the note quoted above it (and buzzes Zohaib's phone); here it joins her list.
 noteComment.addEventListener('submit', async event => {
   event.preventDefault();
   const comment = noteCommentText.value.trim();
@@ -217,10 +233,9 @@ noteComment.addEventListener('submit', async event => {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || 'That did not send. Please try again.');
     noteCommentText.value = '';
-    toggleCommentBox(false);
-    noteSaid.hidden = false;
-    noteSaid.textContent = `you said: “${comment}”`;
-    noteStatus.textContent = "sent to Zohaib's mailbox ♡";
+    noteComments.push({ text: comment, createdAt: new Date().toISOString() });
+    renderNoteComments();
+    noteStatus.textContent = 'sent ♡';
   } catch (error) {
     noteStatus.textContent = error.message;
   }

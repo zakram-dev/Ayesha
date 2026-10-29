@@ -858,11 +858,15 @@ function sealedNote(id) {
   `).get(id) || null;
 }
 
-// What she has already said about a note, shown under it the next time it comes up.
+// Her ♡ and what she has written about a note (oldest first), for the comment panel the next time it comes up.
 function noteReactions(id) {
   const note = sealedNote(id);
-  const lastComment = db.prepare("SELECT body FROM voice_messages WHERE quote_id = ? AND sender = 'ayesha' ORDER BY created_at DESC, id DESC LIMIT 1").get(id);
-  return { liked: Boolean(note?.liked_at), lastComment: lastComment?.body || null };
+  const comments = db.prepare(`
+    SELECT body, created_at FROM voice_messages
+    WHERE quote_id = ? AND sender = 'ayesha'
+    ORDER BY created_at DESC, id DESC LIMIT 50
+  `).all(id).reverse().map(comment => ({ text: comment.body, createdAt: comment.created_at }));
+  return { liked: Boolean(note?.liked_at), comments };
 }
 
 app.post('/api/notes/:id/comments', requireVoice, limitAyeshaSending, (req, res) => {
