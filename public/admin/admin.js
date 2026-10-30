@@ -433,13 +433,13 @@ document.querySelector('#settings-form').addEventListener('submit', async event 
   }
 });
 // ---- My status for her: what she sees, manual buttons, and the iPhone key ----
-const statusWordsShown = { home: 'free · at home', school: 'at school', 'free-school': 'free · at school', work: 'at work', free: 'free', chat: 'busy, can chat', busy: 'busy' };
+const statusWordsShown = { home: 'free · at home', school: 'at school', 'free-school': 'free · at school', work: 'at work', free: 'free', chat: 'busy, can chat', busy: 'busy', driving: 'driving' };
 
 async function loadMyStatus() {
   try {
     const { status, keyConfigured } = await request('/api/admin/status');
     document.querySelector('#admin-status-now').textContent = status
-      ? `She sees: he's ${statusWordsShown[status.key]} · until ${new Date(status.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+      ? `She sees: ${statusWordsShown[status.key]} · until ${new Date(status.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
       : 'She sees: not sure ♡ just ask';
     document.querySelector('#status-key-state').textContent = keyConfigured
       ? 'Your iPhone key is on. Making a new one stops the old one straight away.'

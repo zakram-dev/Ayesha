@@ -745,10 +745,14 @@ function deleteVoiceMessage(id, onlySender = null) {
 }
 
 // Sends a short push to Zohaib's phone through ntfy. Only says that something arrived; never the content.
-async function sendPhoneAlert(req, message, tag) {
+function sendPhoneAlert(req, message, tag) {
+  return sendAlertFor(req.get('host') || 'localhost', message, tag);
+}
+
+// The same buzz, for when there is no request to hand (her invites held back while he drives).
+async function sendAlertFor(siteHost, message, tag) {
   const topic = readSetting('alerts_ntfy_topic');
   if (!topic) return false;
-  const siteHost = req.get('host') || 'localhost';
   const siteOrigin = /^(localhost|127\.0\.0\.1)(:|$)/.test(siteHost) ? `http://${siteHost}` : `https://${siteHost}`;
   try {
     const response = await fetch(`${ntfyServer}/${topic}`, {
@@ -895,10 +899,17 @@ const statusPresets = {
   work: { label: 'at work', place: '', tone: 'busy', at: 'work', hours: 9 },
   free: { label: 'free', place: '', tone: 'free', at: '', hours: 2 },
   chat: { label: 'busy, can chat', place: '', tone: 'chat', at: '', hours: 3 },
-  busy: { label: 'busy', place: '', tone: 'busy', at: '', hours: 3 }
+  busy: { label: 'busy', place: '', tone: 'busy', at: '', hours: 3 },
+  driving: { label: 'driving', place: '', tone: 'busy', at: 'driving', hours: 2 }
 };
-const statusWords = [...Object.keys(statusPresets), 'leave-home', 'leave-school', 'leave-work', 'clear'];
-const statusInvites = { library: 'come to the library? 📚', coffee: 'coffee break? ☕', call: 'call me? 📞' };
+const statusWords = [...Object.keys(statusPresets), 'leave-home', 'leave-school', 'leave-work', 'leave-driving', 'clear'];
+// Her buttons: what lands in the mailbox, and what buzzes his phone.
+const statusInvites = {
+  hey: { text: 'heyyy 👋', alert: 'Ayesha: heyyy 👋' },
+  heartbeat: { text: '💓 a heartbeat', alert: '💓 a heartbeat from Ayesha' },
+  find: { text: 'come find me 📍', alert: 'Ayesha: come find me 📍' },
+  call: { text: 'call me? 📞', alert: 'Ayesha: call me? 📞' }
+};
 const inviteTimes = [];
 const lastInviteByKind = new Map();
 
@@ -914,8 +925,28 @@ function readStatus() {
   const saved = savedStatus();
   const preset = statusPresets[saved?.key];
   if (!preset || !(saved.expiresAt > Date.now())) return null;
-  return { key: saved.key, label: preset.label, place: preset.place, tone: preset.tone, setAt: saved.setAt, expiresAt: saved.expiresAt };
+  return { key: saved.key, label: preset.label, place: preset.place, tone: preset.tone, at: preset.at, setAt: saved.setAt, expiresAt: saved.expiresAt };
 }
+
+// While he is driving, her taps still land in the mailbox, but the buzz waits until the drive is over (the car's
+// Bluetooth lets go, another status takes over, or "driving" runs out). They are saved, so a restart keeps them.
+function heldInvites() {
+  try {
+    return JSON.parse(readSetting('held_invites') || '[]');
+  } catch (error) {
+    return [];
+  }
+}
+
+function releaseHeldInvites() {
+  const held = heldInvites();
+  if (!held.length || readStatus()?.key === 'driving') return;
+  saveSetting.run('held_invites', '');
+  const sent = [...new Set(held.map(item => item.kind))].filter(kind => statusInvites[kind]).map(kind => statusInvites[kind].text);
+  if (sent.length) sendAlertFor(held.at(-1).host, `While you were driving, Ayesha sent: ${sent.join(' · ')}`, 'sparkling_heart');
+}
+
+setInterval(releaseHeldInvites, 60 * 1000).unref();
 
 // "leave-home" and friends only clear a status that came from that place, so a late "left home" can't wipe "at school".
 function applyStatus(word) {
@@ -944,7 +975,9 @@ app.post('/api/status', (req, res) => {
   if (!hasStatusKey(req) && !hasSession(req, 'ayesha_admin', 'admin')) return res.status(401).json({ error: 'That status key is not right.' });
   const word = typeof req.body?.set === 'string' ? req.body.set.trim().toLowerCase() : '';
   if (!statusWords.includes(word)) return res.status(400).json({ error: `Send one of: ${statusWords.join(', ')}.` });
-  res.json({ ok: true, status: applyStatus(word) });
+  const status = applyStatus(word);
+  releaseHeldInvites();
+  res.json({ ok: true, status });
 });
 
 app.get('/api/status', (req, res) => {
@@ -963,8 +996,12 @@ app.post('/api/status/invite', requireVoice, (req, res) => {
   }
   inviteTimes.push(now);
   lastInviteByKind.set(kind, now);
-  db.prepare("INSERT INTO voice_messages (sender, kind, body) VALUES ('ayesha', 'text', ?)").run(statusInvites[kind]);
-  sendPhoneAlert(req, `Ayesha: ${statusInvites[kind]}`, 'sparkling_heart');
+  db.prepare("INSERT INTO voice_messages (sender, kind, body) VALUES ('ayesha', 'text', ?)").run(statusInvites[kind].text);
+  if (readStatus()?.key === 'driving') {
+    saveSetting.run('held_invites', JSON.stringify([...heldInvites(), { kind, host: req.get('host') || 'localhost' }]));
+    return res.status(201).json({ ok: true, held: true });
+  }
+  sendPhoneAlert(req, statusInvites[kind].alert, 'sparkling_heart');
   res.status(201).json({ ok: true });
 });
 

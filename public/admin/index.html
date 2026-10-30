@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css?v=my-status" />
+    <link rel="stylesheet" href="/admin/admin.css?v=heartbeat" />
   </head>
   <body>
     <main>
@@ -56,7 +56,7 @@
         <div class="tab-panel" data-panel="status">
           <section class="panel">
             <div class="section-header"><h2>My status for her</h2></div>
-            <p class="setting-hint">Only she sees this, once she has opened the mailbox or a sealed note. Each status ends on its own (free after 2 hours, school/work/home after 8–10), then she sees "not sure ♡ just ask". Her invite buttons buzz your phone and show up in the mailbox.</p>
+            <p class="setting-hint">Only she sees this, once she has opened the mailbox or a sealed note. Each status ends on its own (free and driving after 2 hours, school/work/home after 8–10), then she sees "not sure ♡ just ask". Her buttons (heyyy, a heartbeat, and "come find me" at school or "call me?" elsewhere) buzz your phone and show up in the mailbox. While you are driving, the buzz waits until you stop.</p>
             <p class="status-now" id="admin-status-now">Loading…</p>
             <div class="status-buttons" id="status-buttons">
               <button class="small-button" type="button" data-set="home">free · at home</button>
@@ -66,6 +66,7 @@
               <button class="small-button" type="button" data-set="free">free</button>
               <button class="small-button" type="button" data-set="chat">busy, can chat</button>
               <button class="small-button" type="button" data-set="busy">busy</button>
+              <button class="small-button" type="button" data-set="driving">driving</button>
               <button class="small-button secondary" type="button" data-set="clear">clear</button>
             </div>
           </section>
@@ -88,9 +89,10 @@
               <li><strong>One helper shortcut (holds the key).</strong> Shortcuts app → <b>+</b> → name it <code>Ayesha status</code>. Add the action <b>Get Contents of URL</b>, URL <code class="status-url">https://ayeshanoor.fun/api/status</code>. Tap the arrow to show more: Method <b>POST</b> · Headers: add <code>X-Status-Key</code> = your key · Request Body <b>JSON</b>: add a <b>Text</b> field named <code>set</code> and set its value to the <b>Shortcut Input</b> variable.</li>
               <li><strong>Wi‑Fi automations.</strong> Automation tab → <b>+</b> → <b>Wi‑Fi</b> → pick your home network → <b>Run Immediately</b> (and turn off "Notify When Run"). Actions: a <b>Text</b> action with <code>home</code>, then <b>Run Shortcut</b> → <code>Ayesha status</code>. Do the same for school (<code>school</code>) and work (<code>work</code>).</li>
               <li><strong>Location automations (backup, and for leaving).</strong> <b>+</b> → <b>Arrive</b> → choose the place → Run Immediately → Text <code>home</code> / <code>school</code> / <code>work</code> → Run Shortcut <code>Ayesha status</code>. Then <b>Leave</b> for each place with <code>leave-home</code>, <code>leave-school</code>, <code>leave-work</code> (these only clear the status if it came from that place).</li>
+              <li><strong>Car Bluetooth (driving).</strong> <b>+</b> → <b>Bluetooth</b> → your car → <b>Is Connected</b> → Run Immediately → Text <code>driving</code> → Run Shortcut <code>Ayesha status</code>. Then a second one with <b>Is Disconnected</b> and <code>leave-driving</code> (it only clears "driving", so it never wipes "at school").</li>
               <li><strong>Your manual button (optional).</strong> New shortcut <code>My status</code>: <b>Choose from List</b> with <code>free</code>, <code>free-school</code>, <code>chat</code>, <code>busy</code>, <code>clear</code> → <b>Run Shortcut</b> <code>Ayesha status</code>. Add it to your Home Screen for one-tap changes (like "free at school" between classes).</li>
             </ol>
-            <p class="setting-hint">Words it understands: <code>home</code>, <code>school</code>, <code>free-school</code>, <code>work</code>, <code>free</code>, <code>chat</code>, <code>busy</code>, <code>leave-home</code>, <code>leave-school</code>, <code>leave-work</code>, <code>clear</code>. Your phone works out where you are; the site only ever receives the word.</p>
+            <p class="setting-hint">Words it understands: <code>home</code>, <code>school</code>, <code>free-school</code>, <code>work</code>, <code>free</code>, <code>chat</code>, <code>busy</code>, <code>driving</code>, <code>leave-home</code>, <code>leave-school</code>, <code>leave-work</code>, <code>leave-driving</code>, <code>clear</code>. Your phone works out where you are; the site only ever receives the word.</p>
           </section>
         </div>
 
@@ -246,6 +248,6 @@
       </div>
     </div>
     <script src="/voice-kit.js?v=note-comments-3"></script>
-    <script src="/admin/admin.js?v=my-status"></script>
+    <script src="/admin/admin.js?v=heartbeat"></script>
   </body>
 </html>

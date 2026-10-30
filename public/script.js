@@ -369,11 +369,12 @@ loadCategories();
 // Once the mailbox knows she is signed in (on load, or after she unlocks it), any sealed card opens up.
 window.addEventListener('mailbox:unread', () => { if (noteGrid.querySelector('.is-sealed')) loadCategories(); });
 
-// ---- His status, only for her: "he's free · at home · 12 min ago", set by his phone. It shows once the mailbox knows
+// ---- His status, only for her: "free · at home · 12 min ago", set by his phone. It shows once the mailbox knows
 // she is signed in, and refreshes whenever the mailbox checks in (about every 45 seconds while the page is open).
-// The invite buttons buzz his phone and land in the mailbox.
+// The invite buttons buzz his phone and land in the mailbox; while he drives, the buzz waits until he parks.
 const hisStatus = document.querySelector('#his-status');
 const statusSent = document.querySelector('#status-sent');
+const statusDot = document.querySelector('#status-dot');
 
 function timeAgo(timestamp) {
   const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
@@ -390,9 +391,13 @@ async function loadHisStatus() {
     const { status } = await response.json();
     hisStatus.dataset.tone = status?.tone || 'unknown';
     document.querySelector('#status-text').textContent = status
-      ? `he's ${status.label}${status.place ? ` · ${status.place}` : ''}`
+      ? `${status.label}${status.place ? ` · ${status.place}` : ''}`
       : 'not sure ♡ just ask';
     document.querySelector('#status-when').textContent = status ? timeAgo(status.setAt) : '';
+    // At school she can ask him to come find her; anywhere else, to call.
+    const atSchool = status?.at === 'school';
+    document.querySelector('[data-invite="find"]').hidden = !atSchool;
+    document.querySelector('[data-invite="call"]').hidden = atSchool;
     hisStatus.hidden = false;
   } catch (error) {
     // Offline for a moment: keep showing the last status.
@@ -400,10 +405,16 @@ async function loadHisStatus() {
 }
 
 window.addEventListener('mailbox:unread', loadHisStatus);
+statusDot.addEventListener('animationend', event => { if (event.animationName === 'status-heartbeat') statusDot.classList.remove('beat'); });
 
 document.querySelector('#status-invites').addEventListener('click', async event => {
   const button = event.target.closest('[data-invite]');
   if (!button) return;
+  if (button.dataset.invite === 'heartbeat') {
+    statusDot.classList.remove('beat');
+    void statusDot.offsetWidth;
+    statusDot.classList.add('beat');
+  }
   statusSent.textContent = 'sending…';
   try {
     const response = await fetch('/api/status/invite', {
