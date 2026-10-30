@@ -5,6 +5,7 @@ const text = document.querySelector('#modal-message');
 const noteGrid = document.querySelector('.note-grid');
 const anotherNote = document.querySelector('#another-note');
 const modalStar = modal.querySelector('.modal-star');
+const noteNew = document.querySelector('#note-new');
 const sealForm = document.querySelector('#seal-form');
 const sealPassword = document.querySelector('#seal-password');
 const sealStatus = document.querySelector('#seal-status');
@@ -139,6 +140,7 @@ function renderCategories(categories) {
         <i>→</i>
       </button>`).join('')
     : '<p class="notes-loading">There are no feeling categories yet.</p>';
+  categories.filter(category => category.private && !category.sealed).forEach(category => showNewCount(category.slug, category.newCount || 0));
 
   noteGrid.querySelectorAll('.mood-card').forEach(card => card.addEventListener('click', () => {
     recordEvent('click', { target: card.dataset.track, mood: card.dataset.mood, categoryId: Number(card.dataset.categoryId) });
@@ -146,10 +148,19 @@ function renderCategories(categories) {
   }));
 }
 
+// "✦ 2 new" on her sealed card while there are notes she hasn't opened yet; the server serves those first.
+function showNewCount(slug, count) {
+  const pill = noteGrid.querySelector(`.sealed-card[data-mood="${CSS.escape(slug)}"]:not(.is-sealed) .seal-note`);
+  if (!pill) return;
+  pill.textContent = count ? `✦ ${count} new` : '♡ open it';
+  pill.classList.toggle('has-new', count > 0);
+}
+
 // The message card turns into a velvet letter for private notes.
 function setModalLook(isPrivate) {
   modal.classList.toggle('is-private', isPrivate);
   modalStar.textContent = isPrivate ? '♥' : '✦';
+  noteNew.hidden = true;
   sealForm.hidden = true;
   anotherNote.hidden = false;
   showReactions(null);
@@ -257,6 +268,8 @@ async function showMessage(mood = 'welcome') {
     text.textContent = activeQuote.text;
     if (isPrivate) replayClass(modal.querySelector('.modal-card'), 'unsealed');
     showReactions(isPrivate ? activeQuote.reactions || null : null);
+    noteNew.hidden = !activeQuote.isNew;
+    if (Number.isInteger(activeQuote.newLeft)) showNewCount(mood, activeQuote.newLeft);
     recordEvent('message-viewed', { mood, quoteId: activeQuote.id, categoryId: activeQuote.category_id });
   } catch (error) {
     activeQuote = null;

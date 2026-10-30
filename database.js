@@ -126,6 +126,11 @@ if (!quoteColumns.some(column => column.name === 'status')) {
 if (!quoteColumns.some(column => column.name === 'liked_at')) {
   db.exec('ALTER TABLE quotes ADD COLUMN liked_at TEXT');
 }
+// When Ayesha first opens a sealed note, so new ones reach her first. Every note written before this counts as opened.
+if (!quoteColumns.some(column => column.name === 'opened_at')) {
+  db.exec('ALTER TABLE quotes ADD COLUMN opened_at TEXT');
+  db.prepare('UPDATE quotes SET opened_at = CURRENT_TIMESTAMP').run();
+}
 
 // Her comments on sealed notes are mailbox messages that remember which note they are about.
 const voiceMessageColumns = db.prepare('PRAGMA table_info(voice_messages)').all();

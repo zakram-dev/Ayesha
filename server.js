@@ -99,6 +99,19 @@ function canSeePrivate(req) {
   return hasSession(req, 'ayesha_voice', 'voice') || hasSession(req, 'ayesha_admin', 'admin');
 }
 
+// Sealed notes she has not opened yet, for the "✦ 2 new" on her card.
+function unopenedCount(categoryId) {
+  return db.prepare(`
+    SELECT COUNT(*) AS count FROM quotes
+    WHERE category_id = ? AND active = 1 AND status = 'active' AND opened_at IS NULL
+  `).get(categoryId).count;
+}
+
+// Only her own mailbox login opens notes for real; when Zohaib looks while signed in to admin, nothing is marked.
+function isHer(req) {
+  return hasSession(req, 'ayesha_voice', 'voice') && !hasSession(req, 'ayesha_admin', 'admin');
+}
+
 app.get('/api/categories', (req, res) => {
   const unlocked = canSeePrivate(req);
   const categories = db.prepare(`
@@ -108,7 +121,12 @@ app.get('/api/categories', (req, res) => {
     FROM categories
     WHERE active = 1
     ORDER BY id
-  `).all().map(category => ({ ...category, private: Boolean(category.private), sealed: Boolean(category.private) && !unlocked }));
+  `).all().map(category => ({
+    ...category,
+    private: Boolean(category.private),
+    sealed: Boolean(category.private) && !unlocked,
+    ...(category.private && unlocked ? { newCount: unopenedCount(category.id) } : {})
+  }));
 
   // Whether a card is sealed depends on who is asking, so no shared cache may keep this.
   res.set('Cache-Control', 'private, no-store');
@@ -387,7 +405,7 @@ app.delete('/api/admin/categories/:id', requireAdmin, (req, res) => {
 app.get('/api/admin/quotes', requireAdmin, (req, res) => {
   res.json(db.prepare(`
     SELECT q.id, q.text, q.author, q.active, q.status, q.is_main_quote, q.display_order,
-      q.category_id, c.name AS category_name, c.slug AS category_slug, q.liked_at,
+      q.category_id, c.name AS category_name, c.slug AS category_slug, c.private AS category_private, q.liked_at, q.opened_at,
       (SELECT COUNT(*) FROM voice_messages m WHERE m.quote_id = q.id) AS comment_count
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
@@ -474,9 +492,22 @@ app.get('/api/quotes/random', (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     if (!canSeePrivate(req)) return res.status(401).json({ error: 'This one is sealed.', sealed: true });
   }
+  // Sealed notes she has never opened come first, in the order they are listed in admin; once she has read them
+  // all, it is random again.
+  const forHer = isPrivate && isHer(req);
+  const unopened = forHer && db.prepare(`
+    SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
+    FROM quotes q
+    JOIN categories c ON c.id = q.category_id
+    WHERE q.active = 1 AND q.status = 'active' AND c.active = 1 AND c.slug = ? AND q.opened_at IS NULL
+    ORDER BY q.display_order, q.id
+    LIMIT 1
+  `).get(category);
+  if (unopened) db.prepare('UPDATE quotes SET opened_at = CURRENT_TIMESTAMP WHERE id = ?').run(unopened.id);
+
   const excludedIds = parseIdList(req.query.exclude, 10);
   const exclusionClause = excludedIds.length ? `AND q.id NOT IN (${excludedIds.map(() => '?').join(',')})` : '';
-  const quote = db.prepare(`
+  const quote = unopened || db.prepare(`
     SELECT q.id, q.text, q.author, c.id AS category_id, c.name AS category_name, c.slug AS category_slug
     FROM quotes q
     JOIN categories c ON c.id = q.category_id
@@ -501,7 +532,8 @@ app.get('/api/quotes/random', (req, res) => {
     author: fallback.author,
     category: { id: fallback.category_id, name: fallback.category_name, slug: fallback.category_slug },
     // Only she (signed in to the mailbox) can ♡ or comment, so only she gets these.
-    ...(isPrivate && hasSession(req, 'ayesha_voice', 'voice') ? { reactions: noteReactions(fallback.id) } : {})
+    ...(isPrivate && hasSession(req, 'ayesha_voice', 'voice') ? { reactions: noteReactions(fallback.id) } : {}),
+    ...(forHer ? { isNew: Boolean(unopened), newLeft: unopenedCount(fallback.category_id) } : {})
   });
 });
 
