@@ -908,7 +908,7 @@ const statusInvites = {
   hey: { text: 'heyyy 👋', alert: 'Ayesha: heyyy 👋' },
   heartbeat: { text: '💓 a heartbeat', alert: '💓 a heartbeat from Ayesha' },
   find: { text: 'come find me 📍', alert: 'Ayesha: come find me 📍' },
-  call: { text: 'call me? 📞', alert: 'Ayesha: call me? 📞' }
+  library: { text: 'come to library please 📚', alert: 'Ayesha: come to library please 📚' }
 };
 const inviteTimes = [];
 const lastInviteByKind = new Map();

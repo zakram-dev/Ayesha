@@ -394,10 +394,10 @@ async function loadHisStatus() {
       ? `${status.label}${status.place ? ` · ${status.place}` : ''}`
       : 'not sure ♡ just ask';
     document.querySelector('#status-when').textContent = status ? timeAgo(status.setAt) : '';
-    // At school she can ask him to come find her; anywhere else, to call.
+    // At school she can ask him to come find her; anywhere else, to come to the library.
     const atSchool = status?.at === 'school';
     document.querySelector('[data-invite="find"]').hidden = !atSchool;
-    document.querySelector('[data-invite="call"]').hidden = atSchool;
+    document.querySelector('[data-invite="library"]').hidden = atSchool;
     hisStatus.hidden = false;
   } catch (error) {
     // Offline for a moment: keep showing the last status.
