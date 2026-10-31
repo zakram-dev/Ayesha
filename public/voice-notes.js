@@ -6,7 +6,6 @@
   const panel = document.querySelector('#voice-panel');
   const thread = document.querySelector('#voice-thread');
   const badge = document.querySelector('#voice-badge');
-  const player = window.VoiceKit.attachPlayer(thread);
   let pollTimer = null;
   let mailTimer = null;
 
@@ -46,18 +45,26 @@
   }
 
   async function loadThread() {
-    const messages = await request('/api/voice/messages');
-    window.VoiceKit.renderThread(thread, messages, {
-      me: 'ayesha',
-      names: { ayesha: 'You', zohaib: 'Zohaib' },
-      canDelete: message => message.sender === 'ayesha'
-    });
+    chat.render(await request('/api/voice/messages'));
     showBadge(0);
   }
+
+  // Tap a message to react / reply / unsend (her own, for 5 minutes), double-tap for ❤️, swipe right to reply.
+  const chat = window.VoiceKit.mountThread(thread, {
+    me: 'ayesha',
+    names: { ayesha: 'You', zohaib: 'Zohaib' },
+    react: (id, reaction) => request(`/api/voice/messages/${id}/reaction`, { method: 'PUT', body: JSON.stringify({ reaction }) }),
+    played: id => request(`/api/voice/messages/${id}/played`, { method: 'POST' }),
+    unsend: id => request(`/api/voice/messages/${id}`, { method: 'DELETE' }),
+    onReply: target => composer.replyTo(target),
+    refresh: () => loadThread().catch(() => {}),
+    onError: message => composer.showStatus(message)
+  });
 
   async function showPanel() {
     unlockForm.hidden = true;
     panel.hidden = false;
+    composer.fit();
     await loadThread();
     window.clearInterval(pollTimer);
     pollTimer = window.setInterval(() => loadThread().catch(() => {}), 15000);
@@ -66,7 +73,7 @@
 
   function closeVoiceModal() {
     window.clearInterval(pollTimer);
-    player.stop();
+    chat.stop();
     composer.reset();
     voiceModal.classList.remove('is-open');
     voiceModal.setAttribute('aria-hidden', 'true');
@@ -74,12 +81,17 @@
 
   const composer = window.VoiceKit.mountComposer(document.querySelector('#voice-composer'), {
     placeholder: 'or type a little message to Zohaib…',
-    async sendVoice(recording) {
-      await window.VoiceKit.uploadVoice('/api/voice/messages/audio', recording);
+    draftKey: 'ayesha-chat-draft',
+    async sendVoice(recording, replyTo) {
+      await window.VoiceKit.uploadVoice('/api/voice/messages/audio', recording, replyTo);
       await loadThread();
     },
-    async sendText(text) {
-      await request('/api/voice/messages', { method: 'POST', body: JSON.stringify({ text }) });
+    async sendText(text, replyTo) {
+      await request('/api/voice/messages', { method: 'POST', body: JSON.stringify({ text, replyTo }) });
+      await loadThread();
+    },
+    async sendSticker(sticker, replyTo) {
+      await request('/api/voice/messages', { method: 'POST', body: JSON.stringify({ sticker, replyTo }) });
       await loadThread();
     }
   });
@@ -106,17 +118,6 @@
       await showPanel();
     } catch (error) {
       unlockStatus.textContent = error.message;
-    }
-  });
-
-  thread.addEventListener('click', async event => {
-    const button = event.target.closest('.voice-delete');
-    if (!button || !window.confirm('Delete this message?')) return;
-    try {
-      await request(`/api/voice/messages/${button.dataset.id}`, { method: 'DELETE' });
-      await loadThread();
-    } catch (error) {
-      window.alert(error.message);
     }
   });
 

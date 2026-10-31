@@ -137,6 +137,11 @@ const voiceMessageColumns = db.prepare('PRAGMA table_info(voice_messages)').all(
 if (!voiceMessageColumns.some(column => column.name === 'quote_id')) {
   db.exec('ALTER TABLE voice_messages ADD COLUMN quote_id INTEGER');
 }
+// Chat extras: the message it replies to, an emoji reaction from the one who received it, when a voice note was first
+// played by the one who received it, and which bunny sticker it is (stickers are saved as text, so older code still reads them).
+for (const [column, type] of [['reply_to', 'INTEGER'], ['reaction', 'TEXT'], ['played_at', 'TEXT'], ['sticker', 'TEXT']]) {
+  if (!voiceMessageColumns.some(existing => existing.name === column)) db.exec(`ALTER TABLE voice_messages ADD COLUMN ${column} ${type}`);
+}
 
 const seedCategories = db.prepare(`
   INSERT INTO categories (name, slug, card_title, description, color)

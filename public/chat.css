@@ -1,0 +1,96 @@
+/* Chat extras shared by her mailbox and the admin chat: options under a tapped message, reactions, replies, swipe to reply,
+   bunny stickers and the growing text box. Loaded after each page's own styles. */
+.voice-message { position:relative; touch-action:pan-y; -webkit-tap-highlight-color:transparent; cursor:pointer; outline:0; }
+.voice-message p { white-space:pre-wrap; }
+.voice-message:focus-visible { box-shadow:0 0 0 2px #d97898; }
+.voice-message.is-selected { box-shadow:0 0 0 2px rgba(217,120,152,.55); }
+.voice-message.swipe-back { transition:transform .22s ease; }
+.voice-message::before { content:"↩"; position:absolute; left:-26px; top:50%; translate:0 -50%; color:#c15375; font-size:16px; opacity:var(--swipe,0); pointer-events:none; }
+.voice-message.flash { animation:voice-flash 1.2s ease-out; }
+@keyframes voice-flash { 0%,40% { box-shadow:0 0 0 3px rgba(242,155,183,.9); } 100% { box-shadow:0 0 0 3px rgba(242,155,183,0); } }
+
+/* An emoji reaction on a message, and the big heart when it is double-tapped */
+.voice-message.has-reaction { margin-bottom:8px; }
+.voice-reaction { position:absolute; bottom:-12px; display:grid; place-items:center; min-width:28px; height:28px; padding:0 3px; border:2px solid #fffaf8; border-radius:999px; background:#fff0f4; font-size:15px; line-height:1; box-shadow:0 3px 8px rgba(92,44,67,.18); }
+.voice-message.theirs .voice-reaction { right:-10px; }.voice-message.mine .voice-reaction { left:-10px; }
+.voice-sticker .voice-reaction,.voice-message.mine .voice-sticker .voice-reaction { bottom:4px; left:auto; right:-2px; }
+.voice-reaction.pop { animation:voice-reaction-pop .45s cubic-bezier(.34,1.56,.64,1); }
+@keyframes voice-reaction-pop { from { transform:scale(0); } }
+.voice-heart-burst { position:absolute; left:50%; top:50%; color:#e0446f; font-size:44px; line-height:1; pointer-events:none; text-shadow:0 4px 14px rgba(224,68,111,.35); animation:voice-burst .8s ease-out forwards; }
+@keyframes voice-burst { 0% { transform:translate(-50%,-50%) scale(.2); opacity:0; } 25% { transform:translate(-50%,-50%) scale(1.15); opacity:1; } 60% { transform:translate(-50%,-50%) scale(1); opacity:1; } 100% { transform:translate(-50%,-95%) scale(1); opacity:0; } }
+
+/* Options under a tapped message: react (+), reply, and the trash can on its own at the far side */
+.voice-message.is-selected { min-width:min(230px,100%); }
+.voice-actions { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:9px; cursor:default; }
+.voice-actions button { min-height:32px; padding:5px 12px; border:1px solid rgba(166,76,105,.3); border-radius:999px; background:rgba(255,255,255,.78); color:#a3305a; font:600 11px "DM Mono",monospace; cursor:pointer; }
+.voice-actions button:hover { background:#fff; }
+.voice-actions .voice-react-open { width:34px; min-height:34px; padding:0; font:400 18px/1 "Plus Jakarta Sans",sans-serif; }
+/* The trash can takes the bubble's own text colour, so it shows on every bubble in both themes. */
+.voice-actions .voice-trash { display:inline-flex; align-items:center; gap:5px; margin-left:auto; padding:0 9px; border-color:transparent; background:none; color:inherit; opacity:.7; }
+.voice-actions .voice-trash:hover { background:rgba(179,38,30,.1); opacity:1; }
+.voice-actions .voice-trash.is-armed { border-color:#b3261e; background:#b3261e; color:#fff; opacity:1; }
+.trash-icon { width:18px; height:18px; flex:none; }
+.voice-actions.is-picking { gap:4px; }
+.voice-actions .voice-react-choice { width:38px; min-height:38px; padding:0; border-color:transparent; background:rgba(255,255,255,.6); font:400 20px/1 "Plus Jakarta Sans",sans-serif; transition:transform .12s; }
+.voice-actions .voice-react-choice:hover,.voice-actions .voice-react-choice:focus-visible { transform:scale(1.18); }
+.voice-actions .voice-react-choice.is-current { border-color:#d97898; background:#fde3ec; }
+
+/* The quote above a reply; tapping it jumps to the message it answers */
+.voice-reply-quote { display:block; width:100%; margin:7px 0 2px; padding:6px 10px; border:0; border-left:3px solid #d97898; border-radius:4px 10px 10px 4px; background:rgba(122,40,72,.08); color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.voice-reply-quote small { display:block; margin-bottom:2px; font:600 9px "DM Mono",monospace; letter-spacing:.06em; opacity:.8; }
+.voice-reply-quote span { display:-webkit-box; overflow:hidden; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:13px; opacity:.85; }
+.voice-reply-quote.is-gone { cursor:default; font-size:12px; font-style:italic; opacity:.7; }
+
+/* Stickers sit in the chat without a bubble */
+.voice-message.is-sticker { padding:2px 0; border:0; background:none; box-shadow:none; color:#8d6875; }
+.voice-message.mine.is-sticker { text-align:right; }
+.voice-message.is-sticker.is-selected { box-shadow:none; }
+.voice-sticker { position:relative; width:112px; height:112px; margin-top:4px; }
+.voice-message.mine .voice-sticker { margin-left:auto; }
+.bunny-sticker { display:block; width:100%; height:100%; overflow:visible; }
+.bunny-sticker .st-wave { transform-box:fill-box; transform-origin:15% 90%; animation:sticker-wave 1.1s ease-in-out 2; }
+@keyframes sticker-wave { 25% { transform:rotate(-14deg); } 75% { transform:rotate(10deg); } }
+
+/* "Replying to" bar, the sticker tray, and the text box that grows */
+.voice-replying { display:flex; align-items:center; gap:10px; margin-bottom:10px; padding:8px 8px 8px 12px; border-left:3px solid #d97898; border-radius:4px 12px 12px 4px; background:rgba(242,155,183,.16); text-align:left; }
+.voice-replying[hidden] { display:none; }
+.voice-replying p { flex:1; min-width:0; margin:0; }
+.voice-replying small { display:block; font:500 10px "DM Mono",monospace; letter-spacing:.04em; opacity:.8; }
+.voice-replying span { display:block; overflow:hidden; font-size:13px; white-space:nowrap; text-overflow:ellipsis; }
+.voice-replying-cancel { flex:none; width:30px; height:30px; padding:0; border:0; border-radius:50%; background:none; color:inherit; font-size:20px; line-height:1; cursor:pointer; }
+.voice-sticker-tray { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; margin-top:10px; padding:10px; border-radius:16px; background:rgba(242,155,183,.14); }
+.voice-sticker-tray[hidden] { display:none; }
+.voice-sticker-tray button { display:grid; justify-items:center; gap:2px; padding:4px 2px; border:0; border-radius:12px; background:none; color:inherit; cursor:pointer; transition:transform .15s,background .15s; }
+.voice-sticker-tray button:hover,.voice-sticker-tray button:focus-visible { background:rgba(255,255,255,.65); transform:translateY(-2px); }
+.voice-sticker-tray button:disabled { opacity:.5; }
+.voice-sticker-tray .bunny-sticker { width:56px; height:56px; }
+.voice-sticker-tray .bunny-sticker .st-wave { animation:none; }
+.voice-sticker-tray small { font:500 9px "DM Mono",monospace; opacity:.75; }
+.voice-text-form { align-items:flex-end; }
+.voice-text-form > button[type="submit"] { min-height:44px; }
+.voice-text-form textarea { resize:none; overflow-y:auto; max-height:140px; line-height:1.4; }
+.voice-text-form .voice-sticker-toggle { flex:none; display:grid; place-items:center; width:44px; height:44px; padding:0; border:1px solid #e7cbd5; border-radius:12px; background:none; color:#c15375; }
+.voice-text-form .voice-sticker-toggle[aria-expanded="true"] { background:rgba(242,155,183,.2); }
+.sticker-icon { width:22px; height:22px; }
+/* Phones: the mailbox fits the visible screen (not under Safari's toolbar), and the tray and text box stay compact. */
+#voice-modal .modal-card { max-height:calc(100dvh - 24px); }
+@media (max-width:520px) {
+  .voice-sticker-tray { gap:2px; padding:6px; }
+  .voice-sticker-tray .bunny-sticker { width:40px; height:40px; }
+  .voice-sticker-tray small { display:none; }
+  .voice-text-form textarea { max-height:96px; }
+  #voice-modal .voice-thread { min-height:120px; }
+}
+
+[data-theme="night"] .voice-actions button { border-color:#4a3346; background:#21162a; color:#f29bb7; }
+[data-theme="night"] .voice-reaction { border-color:#21162a; background:#3a2840; }
+[data-theme="night"] .voice-actions .voice-trash { background:none; border-color:transparent; color:inherit; }
+[data-theme="night"] .voice-actions .voice-trash.is-armed { border-color:#e0607a; background:#c0394f; color:#fff; }
+[data-theme="night"] .voice-actions .voice-react-choice { background:rgba(255,255,255,.06); border-color:transparent; }
+[data-theme="night"] .voice-actions .voice-react-choice.is-current { border-color:#f29bb7; background:rgba(242,155,183,.18); }
+[data-theme="night"] .voice-message.is-sticker { color:#c3a3b3; }
+[data-theme="night"] .voice-reply-quote { background:rgba(255,255,255,.07); }
+[data-theme="night"] .voice-replying,[data-theme="night"] .voice-sticker-tray { background:rgba(242,155,183,.08); color:#f3dce7; }
+[data-theme="night"] .voice-sticker-tray button:hover { background:rgba(255,255,255,.08); }
+[data-theme="night"] .voice-text-form .voice-sticker-toggle { border-color:#4a3346; color:#f29bb7; }
+@media (prefers-reduced-motion:reduce) { .voice-reaction.pop,.bunny-sticker .st-wave,.voice-message.flash { animation:none; }.voice-heart-burst { display:none; }.voice-message.swipe-back,.voice-sticker-tray button,.voice-actions .voice-react-choice { transition:none; } }

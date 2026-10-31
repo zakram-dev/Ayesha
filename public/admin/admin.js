@@ -118,15 +118,15 @@ function activateTab(tabName) {
   if (tabName === 'voice') {
     loadVoiceThread();
     loadAlerts();
+    voiceComposer.fit();
     voicePollTimer = window.setInterval(loadVoiceThread, 20000);
   } else {
-    voicePlayer.stop();
+    voiceChat.stop();
   }
 }
 
 // ---- Voice notes with Ayesha ----
 const voiceThread = document.querySelector('#admin-voice-thread');
-const voicePlayer = window.VoiceKit.attachPlayer(voiceThread);
 let voicePollTimer = null;
 
 function showVoiceBadge(unread) {
@@ -137,39 +137,40 @@ function showVoiceBadge(unread) {
 
 async function loadVoiceThread() {
   try {
-    const messages = await request('/api/admin/voice/messages');
-    window.VoiceKit.renderThread(voiceThread, messages, {
-      me: 'zohaib',
-      names: { ayesha: 'Ayesha', zohaib: 'You' },
-      canDelete: () => true
-    });
+    voiceChat.render(await request('/api/admin/voice/messages'));
     showVoiceBadge(0);
   } catch (error) {
     showStatus(error.message, true);
   }
 }
 
-window.VoiceKit.mountComposer(document.querySelector('#admin-voice-composer'), {
+const voiceComposer = window.VoiceKit.mountComposer(document.querySelector('#admin-voice-composer'), {
   placeholder: 'or type a little message to Ayesha…',
-  async sendVoice(recording) {
-    await window.VoiceKit.uploadVoice('/api/admin/voice/messages/audio', recording);
+  draftKey: 'admin-chat-draft',
+  async sendVoice(recording, replyTo) {
+    await window.VoiceKit.uploadVoice('/api/admin/voice/messages/audio', recording, replyTo);
     await loadVoiceThread();
   },
-  async sendText(text) {
-    await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ text }) });
+  async sendText(text, replyTo) {
+    await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ text, replyTo }) });
+    await loadVoiceThread();
+  },
+  async sendSticker(sticker, replyTo) {
+    await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ sticker, replyTo }) });
     await loadVoiceThread();
   }
 });
 
-voiceThread.addEventListener('click', async event => {
-  const button = event.target.closest('.voice-delete');
-  if (!button || !confirm('Delete this message for both of you?')) return;
-  try {
-    await request(`/api/admin/voice/messages/${button.dataset.id}`, { method: 'DELETE' });
-    await loadVoiceThread();
-  } catch (error) {
-    showStatus(error.message, true);
-  }
+// Tap a message to react / reply / delete (any message, any time), double-tap for ❤️, swipe right to reply.
+const voiceChat = window.VoiceKit.mountThread(voiceThread, {
+  me: 'zohaib',
+  names: { ayesha: 'Ayesha', zohaib: 'You' },
+  react: (id, reaction) => request(`/api/admin/voice/messages/${id}/reaction`, { method: 'PUT', body: JSON.stringify({ reaction }) }),
+  played: id => request(`/api/admin/voice/messages/${id}/played`, { method: 'POST' }),
+  remove: id => request(`/api/admin/voice/messages/${id}`, { method: 'DELETE' }),
+  onReply: target => voiceComposer.replyTo(target),
+  refresh: loadVoiceThread,
+  onError: message => showStatus(message, true)
 });
 
 function renderAlerts(topic) {

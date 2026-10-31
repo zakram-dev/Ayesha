@@ -21,6 +21,13 @@ const ayeshaSendTimes = [];
 const voiceSessionMs = 30 * 24 * 60 * 60 * 1000;
 const maxVoiceNoteMs = 125 * 1000;
 const voiceAudioTypes = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/aac': 'aac' };
+// The bunny stickers either of them can send (ids match public/bunny-stickers.js); the words are kept as the message text.
+const bunnyStickers = { wave: 'a waving bunny', heart: 'a bunny holding a heart', blush: 'a shy, blushing bunny', sleepy: 'a sleepy bunny', yay: 'a happy bunny', hug: 'a bunny hug' };
+// She can take back a message for this long after sending it.
+const unsendMinutes = 5;
+// The emoji either of them can react with (the same list is in public/voice-kit.js).
+const chatReactions = ['❤️', '😂', '🥰', '🥺', '😮', '😢'];
+const reactionAlertTimes = new Map();
 // Voice notes live next to the database (inside the mounted data folder), never under public/.
 const voiceDir = path.join(path.dirname(db.name), 'voice');
 const ntfyServer = process.env.NTFY_SERVER || 'https://ntfy.sh';
@@ -719,13 +726,27 @@ function requireVoice(req, res, next) {
 }
 
 // Opening the thread marks the other person's messages as seen.
+// A short line about a message, for the quote above a reply.
+function replyPreview(message) {
+  if (message.sticker) return 'a bunny sticker';
+  if (message.kind === 'voice') {
+    const seconds = Math.round((message.duration_ms || 0) / 1000);
+    return `voice note · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+  const text = message.body || '';
+  return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+}
+
 function listVoiceMessages(reader) {
   db.prepare('UPDATE voice_messages SET read_at = CURRENT_TIMESTAMP WHERE sender != ? AND read_at IS NULL').run(reader);
   return db.prepare(`
     SELECT * FROM (
-      SELECT m.id, m.sender, m.kind, m.body, m.duration_ms, m.created_at, m.read_at, m.quote_id, q.text AS note_text
+      SELECT m.id, m.sender, m.kind, m.body, m.duration_ms, m.created_at, m.read_at, m.quote_id, m.reply_to, m.reaction,
+        m.played_at, m.sticker, q.text AS note_text, r.id AS reply_id, r.sender AS reply_sender, r.kind AS reply_kind,
+        r.body AS reply_body, r.duration_ms AS reply_duration_ms, r.sticker AS reply_sticker
       FROM voice_messages m
       LEFT JOIN quotes q ON q.id = m.quote_id
+      LEFT JOIN voice_messages r ON r.id = m.reply_to
       ORDER BY m.created_at DESC, m.id DESC LIMIT 200
     ) ORDER BY created_at, id
   `).all().map(message => ({
@@ -733,11 +754,20 @@ function listVoiceMessages(reader) {
     sender: message.sender,
     kind: message.kind,
     text: message.body,
+    sticker: bunnyStickers[message.sticker] ? message.sticker : null,
     note: message.quote_id ? (message.note_text || 'a note that has since been removed') : null,
+    // The message it answers; if that one was unsent or deleted, the reply still says so.
+    replyTo: message.reply_to
+      ? (message.reply_id
+        ? { id: message.reply_id, sender: message.reply_sender, preview: replyPreview({ kind: message.reply_kind, body: message.reply_body, duration_ms: message.reply_duration_ms, sticker: message.reply_sticker }) }
+        : { id: null, gone: true })
+      : null,
     audioUrl: message.kind === 'voice' ? `/api/voice/audio/${message.id}` : null,
     durationMs: message.duration_ms,
     createdAt: message.created_at,
-    readAt: message.read_at
+    readAt: message.read_at,
+    playedAt: message.played_at,
+    reaction: chatReactions.includes(message.reaction) ? message.reaction : null
   }));
 }
 
@@ -749,9 +779,45 @@ function limitAyeshaSending(req, res, next) {
   next();
 }
 
+// A reply must point at a message that is still there.
+function readReplyTo(value) {
+  const id = Number(value);
+  if (!Number.isInteger(id) || id < 1) return null;
+  return db.prepare('SELECT id FROM voice_messages WHERE id = ?').get(id) ? id : null;
+}
+
+// A typed message or a bunny sticker; returns which, for the buzz on his phone.
 function addTextMessage(sender, req) {
+  const replyTo = readReplyTo(req.body?.replyTo);
+  if (req.body?.sticker !== undefined) {
+    const sticker = String(req.body.sticker);
+    if (!bunnyStickers[sticker]) throw new Error('That sticker is not one of the bunnies.');
+    db.prepare("INSERT INTO voice_messages (sender, kind, body, sticker, reply_to) VALUES (?, 'text', ?, ?, ?)").run(sender, bunnyStickers[sticker], sticker, replyTo);
+    return 'sticker';
+  }
   const text = cleanText(req.body?.text, 'Message', { maxLength: 1000 });
-  db.prepare("INSERT INTO voice_messages (sender, kind, body) VALUES (?, 'text', ?)").run(sender, text);
+  db.prepare("INSERT INTO voice_messages (sender, kind, body, reply_to) VALUES (?, 'text', ?, ?)").run(sender, text, replyTo);
+  return 'text';
+}
+
+// An emoji reaction from whoever received the message (never on your own); null takes it away.
+function readReaction(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!chatReactions.includes(value)) throw new Error('That reaction is not one of the emoji.');
+  return value;
+}
+
+function setReaction(id, receiver, reaction) {
+  const message = db.prepare('SELECT sender, reaction FROM voice_messages WHERE id = ?').get(id);
+  if (!message || message.sender === receiver) return null;
+  db.prepare('UPDATE voice_messages SET reaction = ? WHERE id = ?').run(reaction, id);
+  return { changed: reaction !== null && reaction !== message.reaction };
+}
+
+// The first time the one who received a voice note plays it, the sender sees "listened ✓".
+function markPlayed(id, listener) {
+  return db.prepare("UPDATE voice_messages SET played_at = COALESCE(played_at, CURRENT_TIMESTAMP) WHERE id = ? AND kind = 'voice' AND sender != ?")
+    .run(id, listener).changes > 0;
 }
 
 function addVoiceMessage(sender, req) {
@@ -764,8 +830,8 @@ function addVoiceMessage(sender, req) {
   }
   const fileName = `${crypto.randomBytes(16).toString('hex')}.${extension}`;
   fs.writeFileSync(path.join(voiceDir, fileName), req.body);
-  db.prepare("INSERT INTO voice_messages (sender, kind, audio_file, audio_type, duration_ms) VALUES (?, 'voice', ?, ?, ?)")
-    .run(sender, fileName, type, durationMs);
+  db.prepare("INSERT INTO voice_messages (sender, kind, audio_file, audio_type, duration_ms, reply_to) VALUES (?, 'voice', ?, ?, ?, ?)")
+    .run(sender, fileName, type, durationMs, readReplyTo(req.get('X-Reply-To')));
 }
 
 function deleteVoiceMessage(id, onlySender = null) {
@@ -871,14 +937,38 @@ app.get('/api/voice/messages', requireVoice, (req, res) => {
 });
 
 app.post('/api/voice/messages', requireVoice, limitAyeshaSending, (req, res) => {
+  let kind;
   try {
-    addTextMessage('ayesha', req);
+    kind = addTextMessage('ayesha', req);
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
   ayeshaSendTimes.push(Date.now());
-  sendPhoneAlert(req, 'Ayesha sent you a little message ✦', 'speech_balloon');
+  sendPhoneAlert(req, kind === 'sticker' ? 'Ayesha sent you a sticker ✦' : 'Ayesha sent you a little message ✦', 'speech_balloon');
   res.status(201).json({ ok: true });
+});
+
+app.put('/api/voice/messages/:id/reaction', requireVoice, (req, res) => {
+  const id = Number(req.params.id);
+  let reaction;
+  try {
+    reaction = readReaction(req.body?.reaction);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const result = setReaction(id, 'ayesha', reaction);
+  if (!result) return res.status(404).json({ error: 'That message could not be found.' });
+  // One buzz per message per hour, however many times she changes her mind.
+  if (result.changed && Date.now() - (reactionAlertTimes.get(id) || 0) > 60 * 60 * 1000) {
+    reactionAlertTimes.set(id, Date.now());
+    sendPhoneAlert(req, `Ayesha reacted ${reaction} to your message`, 'heart');
+  }
+  res.json({ reaction });
+});
+
+app.post('/api/voice/messages/:id/played', requireVoice, (req, res) => {
+  markPlayed(Number(req.params.id), 'ayesha');
+  res.status(204).end();
 });
 
 // ---- Her ♡ and comments on the sealed "only for you" notes. A comment is a mailbox message that remembers its note,
@@ -1078,8 +1168,14 @@ app.post('/api/voice/messages/audio', requireVoice, limitAyeshaSending, audioUpl
   res.status(201).json({ ok: true });
 });
 
+// She can unsend her own message for a few minutes after sending it; after that it stays.
 app.delete('/api/voice/messages/:id', requireVoice, (req, res) => {
-  if (!deleteVoiceMessage(Number(req.params.id), 'ayesha')) return res.status(404).json({ error: 'Message not found.' });
+  const id = Number(req.params.id);
+  const message = db.prepare("SELECT created_at >= datetime('now', ?) AS recent FROM voice_messages WHERE id = ? AND sender = 'ayesha'")
+    .get(`-${unsendMinutes} minutes`, id);
+  if (!message) return res.status(404).json({ error: 'Message not found.' });
+  if (!message.recent) return res.status(403).json({ error: `Messages can only be unsent for ${unsendMinutes} minutes.` });
+  deleteVoiceMessage(id, 'ayesha');
   res.status(204).end();
 });
 
@@ -1106,6 +1202,22 @@ app.post('/api/admin/voice/messages', requireAdmin, (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+});
+
+app.put('/api/admin/voice/messages/:id/reaction', requireAdmin, (req, res) => {
+  let reaction;
+  try {
+    reaction = readReaction(req.body?.reaction);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  if (!setReaction(Number(req.params.id), 'zohaib', reaction)) return res.status(404).json({ error: 'That message could not be found.' });
+  res.json({ reaction });
+});
+
+app.post('/api/admin/voice/messages/:id/played', requireAdmin, (req, res) => {
+  markPlayed(Number(req.params.id), 'zohaib');
+  res.status(204).end();
 });
 
 app.post('/api/admin/voice/messages/audio', requireAdmin, audioUpload, (req, res) => {
