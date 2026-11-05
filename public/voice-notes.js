@@ -20,17 +20,20 @@
     return body;
   }
 
-  function showBadge(unread) {
-    badge.hidden = !unread;
-    badge.textContent = unread ? `${unread} new` : '';
-    // The bunny listens for this so it can bring the mail.
-    window.dispatchEvent(new CustomEvent('mailbox:unread', { detail: { unread } }));
+  // The badge says how many messages are new, or that it's her move in tic-tac-toe. game is left out while she is
+  // reading the thread (the next check brings it).
+  function showBadge(unread, game) {
+    const yourTurn = Boolean(game?.yourTurn);
+    badge.hidden = !unread && !yourTurn;
+    badge.textContent = unread ? `${unread} new` : yourTurn ? 'your turn ♡' : '';
+    // The bunny listens for this so it can bring the mail (or hold up a "your turn" sign, or wear her crown).
+    window.dispatchEvent(new CustomEvent('mailbox:unread', { detail: { unread, game } }));
   }
 
   // While the page is open (and the mailbox is closed), look for new replies every 45 seconds.
   function checkForMail() {
     if (document.hidden || voiceModal.classList.contains('is-open')) return;
-    request('/api/voice/session').then(session => showBadge(session.unread)).catch(error => {
+    request('/api/voice/session').then(session => showBadge(session.unread, session.game)).catch(error => {
       if (error.status === 401) stopMailChecks();
     });
   }
@@ -59,6 +62,11 @@
     // The page's corner airplane (paper-plane.js) listens, so one opened here doesn't land there too.
     unfold: id => request(`/api/voice/messages/${id}/unfold`, { method: 'POST' })
       .then(() => window.dispatchEvent(new CustomEvent('plane:unfolded', { detail: { id } }))),
+    games: {
+      move: (id, square) => request(`/api/voice/games/${id}/move`, { method: 'POST', body: JSON.stringify({ square }) }),
+      claim: id => request(`/api/voice/games/${id}/claim`, { method: 'POST' }),
+      rematch: stake => request('/api/voice/games', { method: 'POST', body: JSON.stringify({ stake, rematch: true }) })
+    },
     onReply: target => composer.replyTo(target),
     refresh: () => loadThread().catch(() => {}),
     onError: message => composer.showStatus(message)
@@ -80,6 +88,8 @@
     composer.reset();
     voiceModal.classList.remove('is-open');
     voiceModal.setAttribute('aria-hidden', 'true');
+    // A move made in there changes whose turn it is (and maybe who wears the crown).
+    checkForMail();
   }
 
   const composer = window.VoiceKit.mountComposer(document.querySelector('#voice-composer'), {
@@ -95,6 +105,10 @@
     },
     async sendSticker(sticker, replyTo) {
       await request('/api/voice/messages', { method: 'POST', body: JSON.stringify({ sticker, replyTo }) });
+      await loadThread();
+    },
+    async startGame(stake) {
+      await request('/api/voice/games', { method: 'POST', body: JSON.stringify({ stake }) });
       await loadThread();
     }
   });
@@ -132,14 +146,14 @@
 
   // If her phone is already signed in, show how many new notes are waiting from Zohaib, and keep watching.
   request('/api/voice/session').then(session => {
-    showBadge(session.unread);
+    showBadge(session.unread, session.game);
     startMailChecks();
   }).catch(() => {});
   document.addEventListener('visibilitychange', () => { if (!document.hidden && mailTimer) checkForMail(); });
   // Opening the sealed "only for you" card signs her in too; pick that up so new replies show straight away.
   window.addEventListener('mailbox:signed-in', () => {
     request('/api/voice/session').then(session => {
-      showBadge(session.unread);
+      showBadge(session.unread, session.game);
       startMailChecks();
     }).catch(() => {});
   });

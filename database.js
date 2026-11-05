@@ -70,6 +70,24 @@ db.exec(`
     expires_at INTEGER NOT NULL
   );
 
+  -- Tic-tac-toe in the mailbox: the board is nine squares ('.' empty, 'h' her heart, 's' his star). Each game has one
+  -- card in the chat (voice_messages.game_id) that updates as they play.
+  CREATE TABLE IF NOT EXISTS games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board TEXT NOT NULL DEFAULT '.........',
+    first_player TEXT NOT NULL CHECK (first_player IN ('ayesha', 'zohaib')),
+    turn TEXT CHECK (turn IN ('ayesha', 'zohaib')),
+    status TEXT NOT NULL DEFAULT 'playing' CHECK (status IN ('playing', 'won', 'tie')),
+    winner TEXT CHECK (winner IN ('ayesha', 'zohaib')),
+    win_line TEXT,
+    last_square INTEGER,
+    stake TEXT,
+    stake_claimed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS voice_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     sender TEXT NOT NULL CHECK (sender IN ('ayesha', 'zohaib')),
@@ -139,9 +157,9 @@ if (!voiceMessageColumns.some(column => column.name === 'quote_id')) {
 }
 // Chat extras: the message it replies to, an emoji reaction from the one who received it, when a voice note was first
 // played by the one who received it, and which bunny sticker it is (stickers are saved as text, so older code still reads them).
-// A paper airplane is a short text message too, folded until the one who received it unfolds it.
+// A paper airplane is a short text message too, folded until the one who received it unfolds it. A game card points at its game.
 for (const [column, type] of [['reply_to', 'INTEGER'], ['reaction', 'TEXT'], ['played_at', 'TEXT'], ['sticker', 'TEXT'],
-  ['plane', 'INTEGER NOT NULL DEFAULT 0'], ['unfolded_at', 'TEXT']]) {
+  ['plane', 'INTEGER NOT NULL DEFAULT 0'], ['unfolded_at', 'TEXT'], ['game_id', 'INTEGER']]) {
   if (!voiceMessageColumns.some(existing => existing.name === column)) db.exec(`ALTER TABLE voice_messages ADD COLUMN ${column} ${type}`);
 }
 

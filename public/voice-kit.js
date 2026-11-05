@@ -15,6 +15,16 @@
   // Matches planeMaxLength in server.js.
   const planeMaxLength = 140;
   const planeIcon = '<svg class="plane-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 2.6 2.8 10.2l6.9 2.9 2.8 7 8.9-17.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /><path d="m21.4 2.6-11.7 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>';
+  // Tic-tac-toe: her hearts against his stars (the same pieces and stakes limit as in server.js).
+  const gameSymbols = { ayesha: '♡', zohaib: '✦' };
+  const stakeMaxLength = 80;
+  const pieceArt = {
+    h: '<svg class="ttt-piece is-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6C6.4 16.7 3.4 13.8 3.4 10.2c0-2.6 2-4.6 4.5-4.6 1.7 0 3.1.9 4.1 2.3 1-1.4 2.4-2.3 4.1-2.3 2.5 0 4.5 2 4.5 4.6 0 3.6-3 6.5-8.6 10.4Z" /></svg>',
+    s: '<svg class="ttt-piece is-star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8c.8 5.3 2.6 7.6 9.2 9.2-6.6 1.6-8.4 3.9-9.2 9.2-.8-5.3-2.6-7.6-9.2-9.2 6.6-1.6 8.4-3.9 9.2-9.2Z" /></svg>'
+  };
+  const gameIcon = '<svg class="game-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5v17M15 3.5v17M3.5 9h17M3.5 15h17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /><path d="M12 13.9c-1.5-1-2.2-1.7-2.2-2.5 0-.6.5-1.1 1.1-1.1.5 0 .8.3 1.1.6.3-.3.6-.6 1.1-.6.6 0 1.1.5 1.1 1.1 0 .8-.7 1.5-2.2 2.5Z" fill="currentColor" /></svg>';
+  // The board's lines, drawn a little wobbly, like by hand.
+  const gameGrid = '<svg class="ttt-grid" viewBox="0 0 300 300" aria-hidden="true"><path d="M101 10c-3 94 3 186-1 280M199 8c3 95-2 190 1 284M10 101c94-3 186 3 280-1M8 199c95 3 190-2 284 1" /></svg>';
   // A folded paper airplane, waiting to be tapped open.
   const foldedPlane = '<svg class="voice-plane-art" viewBox="0 0 64 44" aria-hidden="true"><path d="M62 3 3 21l19 6.5Z" fill="#fffaf8" stroke="#e3a9bc" stroke-linejoin="round" /><path d="M62 3 22 27.5 27 41Z" fill="#f6cbd8" stroke="#e3a9bc" stroke-linejoin="round" /><path d="M62 3 22 27.5l9.5 3.2Z" fill="#ec9fb8" /></svg>';
 
@@ -42,6 +52,7 @@
   function previewOf(message) {
     if (message.sticker) return 'a bunny sticker';
     if (message.plane) return 'a paper airplane ✈︎';
+    if (message.game) return 'a game of tic-tac-toe ♡ vs ✦';
     if (message.kind === 'voice') return `voice note · ${formatDuration(message.durationMs)}`;
     const text = message.text || '';
     return text.length > 90 ? `${text.slice(0, 90)}…` : text;
@@ -153,6 +164,55 @@
     return `<p>${escapeHtml(message.text)}</p>`;
   }
 
+  // A game of tic-tac-toe as a card: the board (your empty squares can be tapped, on your turn only), whose turn it is
+  // or how it ended, the stakes, the score so far, and a rematch once it's over. freshMove pops in the piece just
+  // played; freshEnd draws the winning line.
+  function gameCard(game, { me, names, freshMove, freshEnd }) {
+    const myTurn = game.status === 'playing' && game.turn === me;
+    const pieceNames = { h: 'heart', s: 'star' };
+    const cells = [...game.board].map((square, index) => {
+      const taken = square !== '.';
+      const label = `${['top', 'middle', 'bottom'][Math.floor(index / 3)]} ${['left', 'center', 'right'][index % 3]}${taken ? `, ${pieceNames[square]}` : ''}`;
+      const classes = `ttt-cell${freshMove && index === game.lastSquare ? ' is-new' : ''}${game.line?.includes(index) ? ' is-winning' : ''}`;
+      return `<button class="${classes}" type="button" data-square="${index}" aria-label="${label}"${myTurn && !taken ? '' : ' disabled'}>${taken ? pieceArt[square] || '' : ''}</button>`;
+    }).join('');
+    let line = '';
+    if (game.line) {
+      const centre = index => [(index % 3) * 100 + 50, Math.floor(index / 3) * 100 + 50];
+      const [[x1, y1], [x2, y2]] = [centre(game.line[0]), centre(game.line[2])];
+      const reach = 0.2; // a little past the outer squares
+      line = `<svg class="ttt-line by-${game.winner}${freshEnd ? ' is-new' : ''}" viewBox="0 0 300 300" aria-hidden="true"><line x1="${x1 - (x2 - x1) * reach}" y1="${y1 - (y2 - y1) * reach}" x2="${x2 + (x2 - x1) * reach}" y2="${y2 + (y2 - y1) * reach}" pathLength="1" /></svg>`;
+    }
+    const sparkles = freshEnd && game.status === 'won' ? `<span class="ttt-sparkles" aria-hidden="true">${'<i>✦</i>'.repeat(6)}</span>` : '';
+    let status;
+    if (game.status === 'tie') status = 'a tie… so you both win a hug 🤗';
+    else if (game.status === 'won') {
+      status = game.winner === me
+        ? (me === 'ayesha' ? 'you won! 👑 the crown is yours today' : `you won ${gameSymbols[me]}`)
+        : `${names[game.winner]} won ${gameSymbols[game.winner]}${game.winner === 'ayesha' ? ' 👑' : ''}`;
+    } else if (game.board === '.........') status = myTurn ? `you go first ${gameSymbols[me]}` : `${names[game.turn]} goes first…`;
+    else status = myTurn ? `your turn ${gameSymbols[me]}` : `waiting for ${names[game.turn]}…`;
+    let stake = '';
+    if (game.stake) {
+      const owed = `<b>${escapeHtml(game.stake)}</b>`;
+      if (game.status === 'playing') stake = `stakes: ${owed}`;
+      else if (game.status === 'tie') stake = `stakes: <s>${escapeHtml(game.stake)}</s> · a tie, so nobody owes anything`;
+      else if (game.stakeClaimedAt) stake = `${owed} · claimed ✓`;
+      else if (game.winner === me) stake = `you won: ${owed} <button class="ttt-claim" type="button" data-game-act="claim">claim it ✓</button>`;
+      else stake = `you owe: ${owed} 😌`;
+    }
+    const { score } = game;
+    const tally = `${escapeHtml(names.ayesha)} ${gameSymbols.ayesha} ${score.ayesha} · ${escapeHtml(names.zohaib)} ${gameSymbols.zohaib} ${score.zohaib}${score.ties ? ` · ties ${score.ties}` : ''}`;
+    const rematch = game.status !== 'playing' && game.latest ? '<button class="ttt-rematch" type="button" data-game-act="rematch">rematch ↺</button>' : '';
+    return `<div class="ttt${game.status === 'playing' ? '' : ' is-over'}${myTurn ? ' is-my-turn' : ''}" data-game="${game.id}">
+        <p class="ttt-title"><b>tic-tac-toe</b><span>${gameSymbols.ayesha} vs ${gameSymbols.zohaib}</span></p>
+        <div class="ttt-board" role="group" aria-label="Tic-tac-toe board">${gameGrid}${cells}${line}${sparkles}</div>
+        <p class="ttt-status" role="status">${escapeHtml(status)}</p>
+        ${stake ? `<p class="ttt-stake">${stake}</p>` : ''}
+        <div class="ttt-foot"><small class="ttt-score">${tally}</small>${rematch}</div>
+      </div>`;
+  }
+
   // Draws the thread. It only redraws when something changed, so a voice note keeps playing and an open
   // message stays open while the thread checks for news. Returns whether it redrew.
   function renderThread(container, messages, { me, names }) {
@@ -160,6 +220,8 @@
     if (container.dataset.rendered && container.lastThreadKey === key) return false;
     const reactionsBefore = container.reactionsShown || new Map();
     container.reactionsShown = new Map(messages.filter(message => message.reaction).map(message => [message.id, message.reaction]));
+    const boardsBefore = container.boardsShown || new Map();
+    container.boardsShown = new Map(messages.filter(message => message.game).map(message => [message.game.id, message.game.board]));
     container.lastThreadKey = key;
     const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
     container.innerHTML = messages.length
@@ -174,17 +236,23 @@
         const note = message.note
           ? `<blockquote class="voice-note-quote"><small>about the note</small><span>${escapeHtml(message.note)}</span></blockquote>`
           : '';
-        const seen = mine
+        const seen = mine && !message.game
           ? (message.kind === 'voice' && message.playedAt ? 'listened ✓' : message.plane && message.unfoldedAt ? 'unfolded ✓' : message.readAt ? 'seen ✓' : '')
           : '';
+        // A move made since the last draw pops in (and a winning one draws its line).
+        const moved = Boolean(message.game && container.dataset.rendered && boardsBefore.has(message.game.id)
+          && boardsBefore.get(message.game.id) !== message.game.board);
+        const body = message.game
+          ? gameCard(message.game, { me, names, freshMove: moved, freshEnd: moved && message.game.status !== 'playing' })
+          : messageBody(message, '', mine);
         // A new or changed reaction pops in; the rest just sit there.
         const isNew = container.dataset.rendered && reactionsBefore.get(message.id) !== message.reaction;
         const reaction = message.reaction
           ? `<span class="voice-reaction${isNew ? ' pop' : ''}" role="img" aria-label="reacted ${escapeHtml(message.reaction)}">${escapeHtml(message.reaction)}</span>`
           : '';
-        return `<article class="voice-message ${mine ? 'mine' : 'theirs'}${message.sticker ? ' is-sticker' : ''}${message.plane ? ' is-plane' : ''}${message.reaction ? ' has-reaction' : ''}" data-id="${message.id}" tabindex="0">
+        return `<article class="voice-message ${mine ? 'mine' : 'theirs'}${message.sticker ? ' is-sticker' : ''}${message.plane ? ' is-plane' : ''}${message.game ? ' is-game' : ''}${message.reaction ? ' has-reaction' : ''}" data-id="${message.id}" tabindex="0">
           <small class="voice-meta">${escapeHtml(names[message.sender])} · ${escapeHtml(formatWhen(message.createdAt))}</small>
-          ${reply}${note}${message.sticker ? messageBody(message, reaction, mine) : messageBody(message, '', mine) + reaction}
+          ${reply}${note}${message.sticker ? messageBody(message, reaction, mine) : body + reaction}
           ${seen ? `<div class="voice-foot"><small class="voice-seen">${seen}</small></div>` : ''}
         </article>`;
       }).join('')
@@ -195,8 +263,9 @@
   }
 
   // The thread with everything you can do to a message: tap for react / reply / unsend, double-tap for ❤️,
-  // swipe right to reply, tap a quote to jump to the message it answers, tap a folded paper airplane to open it.
-  function mountThread(container, { me, names, react, played, unsend, remove, unfold, onReply, refresh, onError = window.alert }) {
+  // swipe right to reply, tap a quote to jump to the message it answers, tap a folded paper airplane to open it, and
+  // play tic-tac-toe on a game card (games: { move, claim, rematch }).
+  function mountThread(container, { me, names, react, played, unsend, remove, unfold, games, onReply, refresh, onError = window.alert }) {
     let messages = [];
     let selectedId = null;
     let tapTimer = null;
@@ -312,6 +381,34 @@
       if (opened) replayClass(opened, 'just-opened');
     }
 
+    // The board redraws from what the server saved, so a move out of turn simply doesn't land.
+    async function playSquare(cell) {
+      const card = cell.closest('.ttt');
+      if (!games || !card || card.classList.contains('is-sending')) return;
+      card.classList.add('is-sending');
+      try {
+        await games.move(Number(card.dataset.game), Number(cell.dataset.square));
+      } catch (error) {
+        onError(error.message);
+      }
+      await refresh();
+      card.classList.remove('is-sending');
+    }
+
+    async function runGameAction(button) {
+      const message = byId(button.closest('.voice-message')?.dataset.id);
+      if (!games || !message?.game) return;
+      button.disabled = true;
+      try {
+        if (button.dataset.gameAct === 'claim') await games.claim(message.game.id);
+        else await games.rematch(message.game.stake);
+      } catch (error) {
+        button.disabled = false;
+        onError(error.message);
+      }
+      await refresh();
+    }
+
     async function runAction(action, article) {
       const message = byId(article.dataset.id);
       if (!message) return;
@@ -362,6 +459,10 @@
       }
       const folded = event.target.closest('[data-unfold]');
       if (folded) return unfoldPlane(folded);
+      const square = event.target.closest('.ttt-cell');
+      if (square) return playSquare(square);
+      const gameAction = event.target.closest('[data-game-act]');
+      if (gameAction) return runGameAction(gameAction);
       const action = event.target.closest('[data-act]');
       if (action) return runAction(action.dataset.act, action.closest('.voice-message'));
       if (event.target.closest('button, a')) return;
@@ -432,8 +533,9 @@
   }
 
   // Record → listen back → send (or redo), a text box that grows and keeps an unsent draft, bunny stickers,
-  // the "replying to" bar, and (where sendPlane is given) ✈︎ to throw what is typed as a paper airplane.
-  function mountComposer(root, { sendVoice, sendText, sendSticker, sendPlane, placeholder = 'or type a little message…', draftKey }) {
+  // the "replying to" bar, (where sendPlane is given) ✈︎ to throw what is typed as a paper airplane, and (where
+  // startGame is given) a new game of tic-tac-toe, with what the loser owes if you like.
+  function mountComposer(root, { sendVoice, sendText, sendSticker, sendPlane, startGame, placeholder = 'or type a little message…', draftKey }) {
     const stickers = sendSticker && window.BunnyStickers ? window.BunnyStickers : null;
     root.classList.add('voice-composer');
     root.innerHTML = `
@@ -458,8 +560,15 @@
       ${stickers ? `<div class="voice-sticker-tray" hidden role="group" aria-label="Bunny stickers">${stickers.list.map(sticker => `
         <button type="button" data-sticker="${sticker.id}" aria-label="Send the ${escapeHtml(sticker.name)} bunny">${stickers.svg(sticker.id)}<small>${escapeHtml(sticker.name)}</small></button>`).join('')}
       </div>` : ''}
+      ${startGame ? `<div class="voice-game-tray" hidden role="group" aria-label="Start a game of tic-tac-toe">
+        <p class="voice-game-title"><b>tic-tac-toe</b> ${gameSymbols.ayesha} vs ${gameSymbols.zohaib}</p>
+        <label class="voice-game-stake"><span>stakes, if you like: what does the loser owe?</span>
+          <input type="text" maxlength="${stakeMaxLength}" placeholder="loser buys coffee ☕" autocomplete="off" /></label>
+        <button class="voice-game-start" type="button">start a game</button>
+      </div>` : ''}
       <form class="voice-text-form">
         ${stickers ? `<button class="voice-sticker-toggle" type="button" aria-label="Bunny stickers" aria-expanded="false">${stickers.icon}</button>` : ''}
+        ${startGame ? `<button class="voice-game-toggle" type="button" aria-label="Play tic-tac-toe" aria-expanded="false">${gameIcon}</button>` : ''}
         <textarea rows="1" maxlength="1000" placeholder="${escapeHtml(placeholder)}" aria-label="Type a message" required></textarea>
         ${sendPlane ? `<button class="voice-plane-throw" type="button" aria-label="Throw it as a paper airplane" title="throw it as a paper airplane">${planeIcon}</button>` : ''}
         <button type="submit">send</button>
@@ -518,10 +627,25 @@
       if (target) textBox.focus({ preventScroll: true });
     }
 
+    const gameTray = root.querySelector('.voice-game-tray');
+    const gameToggle = root.querySelector('.voice-game-toggle');
+
+    // The sticker tray and the game tray take turns: opening one closes the other.
     function showTray(open) {
       if (!tray) return;
       tray.hidden = !open;
       trayToggle.setAttribute('aria-expanded', String(open));
+      if (open) showGameTray(false);
+    }
+
+    function showGameTray(open) {
+      if (!gameTray) return;
+      gameTray.hidden = !open;
+      gameToggle.setAttribute('aria-expanded', String(open));
+      if (open) {
+        showTray(false);
+        gameTray.querySelector('input').focus({ preventScroll: true });
+      }
     }
 
     function setState(state) {
@@ -656,6 +780,31 @@
       }
     });
 
+    gameToggle?.addEventListener('click', () => showGameTray(gameTray.hidden));
+    const gameStart = root.querySelector('.voice-game-start');
+    async function beginGame() {
+      if (gameStart.disabled) return;
+      const stakeBox = gameTray.querySelector('input');
+      gameStart.disabled = true;
+      status.textContent = '';
+      try {
+        await startGame(stakeBox.value.trim());
+        stakeBox.value = '';
+        showGameTray(false);
+        status.textContent = 'Game on ♡';
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        gameStart.disabled = false;
+      }
+    }
+    gameStart?.addEventListener('click', beginGame);
+    gameTray?.querySelector('input').addEventListener('keydown', event => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      beginGame();
+    });
+
     root.querySelector('.voice-replying-cancel').addEventListener('click', () => setReply(null));
     trayToggle?.addEventListener('click', () => showTray(tray.hidden));
     tray?.addEventListener('click', async event => {
@@ -691,6 +840,7 @@
         }
         setReply(null);
         showTray(false);
+        showGameTray(false);
         status.textContent = '';
       }
     };

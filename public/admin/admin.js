@@ -163,6 +163,10 @@ const voiceComposer = window.VoiceKit.mountComposer(document.querySelector('#adm
   async sendPlane(plane) {
     await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ plane }) });
     await loadVoiceThread();
+  },
+  async startGame(stake) {
+    await request('/api/admin/voice/games', { method: 'POST', body: JSON.stringify({ stake }) });
+    await loadVoiceThread();
   }
 });
 
@@ -174,6 +178,11 @@ const voiceChat = window.VoiceKit.mountThread(voiceThread, {
   played: id => request(`/api/admin/voice/messages/${id}/played`, { method: 'POST' }),
   remove: id => request(`/api/admin/voice/messages/${id}`, { method: 'DELETE' }),
   unfold: id => request(`/api/admin/voice/messages/${id}/unfold`, { method: 'POST' }),
+  games: {
+    move: (id, square) => request(`/api/admin/voice/games/${id}/move`, { method: 'POST', body: JSON.stringify({ square }) }),
+    claim: id => request(`/api/admin/voice/games/${id}/claim`, { method: 'POST' }),
+    rematch: stake => request('/api/admin/voice/games', { method: 'POST', body: JSON.stringify({ stake, rematch: true }) })
+  },
   onReply: target => voiceComposer.replyTo(target),
   refresh: loadVoiceThread,
   onError: message => showStatus(message, true)

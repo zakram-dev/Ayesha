@@ -617,24 +617,43 @@ function nextBunnyLine() {
 }
 
 // The bunny brings the mail: while Zohaib's replies are unread, it holds a letter and tapping it opens the mailbox.
-// voice-notes.js reports the unread count (only her signed-in browser can know it).
+// With no letter, it holds up a little sign when it's her move in tic-tac-toe, or "rematch?" on a day he won the last
+// game; and on a day she wins one, it wears her crown. voice-notes.js reports all of this (only her signed-in browser
+// can know it).
 let mailboxUnread = 0;
-let bunnyHasMail = false;
+let mailboxGame = null;
+let bunnyHasMail = false; // a letter or a game sign is waiting, so the bunny stays home with it
+
+// Saved times come from SQLite in UTC ("YYYY-MM-DD HH:MM:SS"); "today" is her own day.
+function happenedToday(savedAt) {
+  return Boolean(savedAt) && new Date(`${savedAt.replace(' ', 'T')}Z`).toDateString() === new Date().toDateString();
+}
+
+function bunnyGameSign() {
+  if (mailboxGame?.yourTurn) return 'your turn ♡ tic-tac-toe';
+  if (mailboxGame && !mailboxGame.playing && mailboxGame.lastWinner === 'zohaib' && happenedToday(mailboxGame.lastEndedAt)) return 'rematch? ✦';
+  return '';
+}
 
 function bunnyMailLine() {
+  if (!mailboxUnread) return bunnyGameSign();
   return document.documentElement.dataset.theme === 'night' ? 'zzz… a letter came for you ♡' : 'psst… you have mail ♡';
 }
 
 function showBunnyMail() {
   if (bunny.hidden) return;
   const hadMail = bunnyHasMail;
-  bunnyHasMail = mailboxUnread > 0;
-  bunny.classList.toggle('has-mail', bunnyHasMail);
-  bunny.setAttribute('aria-label', bunnyHasMail ? 'You have mail. Open our mailbox' : 'Say hi to the bunny');
+  const sign = mailboxUnread ? '' : bunnyGameSign();
+  const wasChampion = bunny.classList.contains('is-champion');
+  bunnyHasMail = mailboxUnread > 0 || Boolean(sign);
+  bunny.classList.toggle('has-mail', mailboxUnread > 0);
+  bunny.classList.toggle('is-champion', happenedToday(mailboxGame?.herLastWinAt));
+  bunny.setAttribute('aria-label', mailboxUnread ? 'You have mail. Open our mailbox' : sign ? `${sign}. Open our mailbox` : 'Say hi to the bunny');
   window.clearTimeout(bunnyBubbleTimer);
   if (bunnyHasMail) {
     bunnyBubble.textContent = bunnyMailLine();
     bunnyBubble.classList.add('mail');
+    bunnyBubble.classList.toggle('sign', Boolean(sign));
     bunnyBubble.hidden = false;
     placeBubble();
     if (!hadMail) {
@@ -645,22 +664,31 @@ function showBunnyMail() {
       if (bunnyIsAwake()) walkBunnyTo(0);
     }
   } else if (hadMail) {
-    bunnyBubble.classList.remove('mail');
+    bunnyBubble.classList.remove('mail', 'sign');
     bunnyBubble.hidden = true;
     // Once she has read the letter, mention anything it unlocked (like the balloon).
     refreshWardrobe();
   }
+  // A crown just won: it drops onto the bunny's head (and the bunny says so, unless it's holding news).
+  if (!wasChampion && bunny.classList.contains('is-champion')) {
+    replayClass(bunny, 'crowned');
+    bunnySay('you won! I’m wearing your crown today 👑', 4200);
+  }
 }
 
 function openMailboxFromBunny() {
-  // Opening a letter the bunny brought unlocks its heart balloon.
-  writeStored(deliveredKey, true);
-  scheduleWardrobeSave();
+  // Opening a letter the bunny brought unlocks its heart balloon (a game sign doesn't count).
+  if (mailboxUnread) {
+    writeStored(deliveredKey, true);
+    scheduleWardrobeSave();
+  }
   document.querySelector('#open-voice-notes').click();
 }
 
 window.addEventListener('mailbox:unread', event => {
   mailboxUnread = event.detail.unread;
+  // The game news is left out while she reads the thread; the last news stands until the next check.
+  if (event.detail.game !== undefined) mailboxGame = event.detail.game;
   showBunnyMail();
 });
 // Keep the bubble's wording in step with day and night while a letter is waiting.
@@ -674,7 +702,7 @@ new MutationObserver(() => {
 // The bunny says something in its bubble for a few seconds (never over a waiting letter).
 function bunnySay(line, ms = 3600) {
   if (bunny.hidden || bunnyHasMail) return;
-  bunnyBubble.classList.remove('mail');
+  bunnyBubble.classList.remove('mail', 'sign');
   bunnyBubble.textContent = line;
   bunnyBubble.hidden = false;
   placeBubble();

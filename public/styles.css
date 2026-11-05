@@ -99,6 +99,12 @@ footer { max-width:1200px;margin:auto;padding:0 46px 35px;display:flex;justify-c
 .bunny-letter { display:none; }.bunny-letter rect { fill:#fff; stroke:#e3a9bd; stroke-width:1.2; }.bunny-letter-flap { fill:none; stroke:#e3a9bd; stroke-width:1.2; stroke-linejoin:round; }.bunny-letter-heart { fill:#e0446f; }
 .bunny.has-mail .bunny-letter { display:inline; transform-box:fill-box; transform-origin:50% 100%; animation:bunny-letter-wiggle 2.6s ease-in-out infinite; }.bunny-bubble.mail { background:#e0446f; color:#fff; cursor:pointer; pointer-events:auto; }
 @keyframes bunny-letter-wiggle { 0%,70%,100% { transform:rotate(0); } 78% { transform:rotate(-6deg); } 86% { transform:rotate(5deg); } 94% { transform:rotate(-2deg); } }
+/* Tic-tac-toe on her page: a little card sign ("your turn ♡", "rematch?") and, on a day she wins, her crown over any hat. */
+.bunny-bubble.mail.sign { border:1.5px solid #e9c98a; border-radius:7px; background:#fff3d6; color:#6e4526; font:600 12px/1.35 "DM Mono",monospace; letter-spacing:.02em; }
+.bunny.is-champion .bunny-head-item:not(.item-crown) { display:none; }
+.bunny.is-champion .item-crown,[data-season] .bunny.is-champion .item-crown { display:inline; }
+.bunny.crowned .item-crown { transform-box:fill-box; transform-origin:50% 100%; animation:bunny-crown-drop .7s cubic-bezier(.34,1.56,.64,1); }
+@keyframes bunny-crown-drop { from { opacity:0; transform:translateY(-14px) rotate(-12deg); } }
 /* Decorative shapes in the arch never take taps, so the flower, bunny and buttons always get them. */
 .orb,.ribbon,.flower-back,.art-note { pointer-events:none; }
 
@@ -334,7 +340,7 @@ footer { max-width:1200px;margin:auto;padding:0 46px 35px;display:flex;justify-c
 [data-theme="night"] #bunny .bunny-body { animation:bunny-breathe 3.6s ease-in-out infinite; }[data-theme="night"] #bunny.hop .bunny-body { animation:bunny-hop .5s ease-out; }[data-theme="night"] .bunny-zzz text { opacity:0; animation:bunny-z 3s ease-in-out infinite; }[data-theme="night"] .bunny-zzz text:nth-child(2) { animation-delay:1s; }[data-theme="night"] .bunny-zzz text:nth-child(3) { animation-delay:2s; }
 [data-theme="night"] .wardrobe-toggle { background:rgba(44,31,51,.9); box-shadow:0 6px 16px rgba(0,0,0,.35); }[data-theme="night"] .wardrobe-new { border-color:#2c1f33; }
 [data-theme="night"] .falling-petal { background:linear-gradient(150deg,#f7dce8,#d7a2c0); box-shadow:0 0 7px rgba(242,155,183,.55); }[data-theme="night"] .flower-secret { background:#2c1f33; color:#ead3dd; box-shadow:0 18px 40px rgba(0,0,0,.45); }[data-theme="night"] .flower-secret-close { color:#c3a3b3; }
-[data-theme="night"] .bunny-bubble.mail { background:#f1a5bb; color:#2a1824; }[data-theme="night"] .ground-stop { stop-color:#000; }[data-theme="night"] .bunny-bubble { background:#2c1f33; color:#ead3dd; box-shadow:0 8px 18px rgba(0,0,0,.35); }
+[data-theme="night"] .bunny-bubble.mail { background:#f1a5bb; color:#2a1824; }[data-theme="night"] .bunny-bubble.mail.sign { border-color:#c9a463; background:#f6dfb0; color:#4a2e1a; }[data-theme="night"] .ground-stop { stop-color:#000; }[data-theme="night"] .bunny-bubble { background:#2c1f33; color:#ead3dd; box-shadow:0 8px 18px rgba(0,0,0,.35); }
 [data-theme="night"] .announcement { background:#f1a5bb; color:#2a1824; }[data-theme="night"] .announcement-action { color:#8a2f55; }[data-theme="night"] .announcement-close { color:#2a1824; }[data-theme="night"] .announcement-close:hover { background:rgba(42,24,36,.1); }
 [data-theme="night"] .voice-notes { background:#211a33; }[data-theme="night"] .voice-notes:before { background:#6b3560; opacity:.6; }[data-theme="night"] .voice-notes:after { background:#3d2f6b; opacity:.7; }[data-theme="night"] .voice-notes .sparkle { color:#f5a4ba; opacity:.65; }[data-theme="night"] .voice-notes > p:not(.eyebrow),[data-theme="night"] .voice-empty,[data-theme="night"] #voice-unlock-form label,[data-theme="night"] .voice-recording small { color:#c3a3b3; }
 [data-theme="night"] .voice-message.theirs { background:#2c1f33; color:#ead3dd; border-color:#3a2840; }[data-theme="night"] .voice-message.mine { color:#2a1824; }[data-theme="night"] .voice-progress { background:rgba(255,255,255,.15); }[data-theme="night"] .voice-message.mine .voice-progress { background:rgba(42,24,36,.2); }

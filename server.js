@@ -25,6 +25,10 @@ const voiceAudioTypes = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg':
 const bunnyStickers = { wave: 'a waving bunny', heart: 'a bunny holding a heart', blush: 'a shy, blushing bunny', sleepy: 'a sleepy bunny', yay: 'a happy bunny', hug: 'a bunny hug' };
 // A paper airplane carries one short line (the same limit is in public/paper-plane.js and voice-kit.js).
 const planeMaxLength = 140;
+// Tic-tac-toe: her hearts against his stars, and what the loser owes (the same limit is in voice-kit.js).
+const gamePieces = { ayesha: 'h', zohaib: 's' };
+const gameLines = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+const stakeMaxLength = 80;
 // She can take back a message for this long after sending it.
 const unsendMinutes = 5;
 // The emoji either of them can react with (the same list is in public/voice-kit.js).
@@ -718,9 +722,10 @@ function readSetting(key) {
   return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
 }
 
-// His paper airplanes fly in on her page by themselves, so they are not mail for the bunny to bring.
+// His paper airplanes fly in on her page by themselves, so they are not mail for the bunny to bring. Game cards
+// aren't either: whose turn it is comes with gameNews.
 function unreadVoiceMessages(sender) {
-  return db.prepare("SELECT COUNT(*) AS count FROM voice_messages WHERE sender = ? AND read_at IS NULL AND (plane = 0 OR sender = 'ayesha')")
+  return db.prepare("SELECT COUNT(*) AS count FROM voice_messages WHERE sender = ? AND read_at IS NULL AND (plane = 0 OR sender = 'ayesha') AND game_id IS NULL")
     .get(sender).count;
 }
 
@@ -734,6 +739,7 @@ function requireVoice(req, res, next) {
 function replyPreview(message) {
   if (message.sticker) return 'a bunny sticker';
   if (message.plane) return 'a paper airplane ✈︎';
+  if (message.game_id) return 'a game of tic-tac-toe ♡ vs ✦';
   if (message.kind === 'voice') {
     const seconds = Math.round((message.duration_ms || 0) / 1000);
     return `voice note · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -742,18 +748,25 @@ function replyPreview(message) {
   return text.length > 90 ? `${text.slice(0, 90)}…` : text;
 }
 
+// A game card sits where its last move was, so the board comes back to the bottom of the chat each time someone plays.
 function listVoiceMessages(reader) {
   db.prepare('UPDATE voice_messages SET read_at = CURRENT_TIMESTAMP WHERE sender != ? AND read_at IS NULL').run(reader);
+  const score = gameScore();
+  const latestGameId = db.prepare('SELECT MAX(id) AS id FROM games').get().id;
   return db.prepare(`
     SELECT * FROM (
       SELECT m.id, m.sender, m.kind, m.body, m.duration_ms, m.created_at, m.read_at, m.quote_id, m.reply_to, m.reaction,
-        m.played_at, m.sticker, m.plane, m.unfolded_at, q.text AS note_text, r.id AS reply_id, r.sender AS reply_sender,
-        r.kind AS reply_kind, r.body AS reply_body, r.duration_ms AS reply_duration_ms, r.sticker AS reply_sticker, r.plane AS reply_plane
+        m.played_at, m.sticker, m.plane, m.unfolded_at, m.game_id, q.text AS note_text, r.id AS reply_id, r.sender AS reply_sender,
+        r.kind AS reply_kind, r.body AS reply_body, r.duration_ms AS reply_duration_ms, r.sticker AS reply_sticker, r.plane AS reply_plane,
+        r.game_id AS reply_game_id, g.id AS g_id, g.board AS g_board, g.first_player AS g_first, g.turn AS g_turn, g.status AS g_status,
+        g.winner AS g_winner, g.win_line AS g_line, g.last_square AS g_last, g.stake AS g_stake, g.stake_claimed_at AS g_claimed,
+        COALESCE(g.updated_at, m.created_at) AS sort_at
       FROM voice_messages m
       LEFT JOIN quotes q ON q.id = m.quote_id
       LEFT JOIN voice_messages r ON r.id = m.reply_to
-      ORDER BY m.created_at DESC, m.id DESC LIMIT 200
-    ) ORDER BY created_at, id
+      LEFT JOIN games g ON g.id = m.game_id
+      ORDER BY sort_at DESC, m.id DESC LIMIT 200
+    ) ORDER BY sort_at, id
   `).all().map(message => ({
     id: message.id,
     sender: message.sender,
@@ -762,11 +775,27 @@ function listVoiceMessages(reader) {
     sticker: bunnyStickers[message.sticker] ? message.sticker : null,
     plane: Boolean(message.plane),
     unfoldedAt: message.unfolded_at,
+    game: message.g_id
+      ? {
+        id: message.g_id,
+        board: message.g_board,
+        first: message.g_first,
+        turn: message.g_turn,
+        status: message.g_status,
+        winner: message.g_winner,
+        line: message.g_line ? message.g_line.split(',').map(Number) : null,
+        lastSquare: message.g_last,
+        stake: message.g_stake,
+        stakeClaimedAt: message.g_claimed,
+        latest: message.g_id === latestGameId,
+        score
+      }
+      : null,
     note: message.quote_id ? (message.note_text || 'a note that has since been removed') : null,
     // The message it answers; if that one was unsent or deleted, the reply still says so.
     replyTo: message.reply_to
       ? (message.reply_id
-        ? { id: message.reply_id, sender: message.reply_sender, preview: replyPreview({ kind: message.reply_kind, body: message.reply_body, duration_ms: message.reply_duration_ms, sticker: message.reply_sticker, plane: message.reply_plane }) }
+        ? { id: message.reply_id, sender: message.reply_sender, preview: replyPreview({ kind: message.reply_kind, body: message.reply_body, duration_ms: message.reply_duration_ms, sticker: message.reply_sticker, plane: message.reply_plane, game_id: message.reply_game_id }) }
         : { id: null, gone: true })
       : null,
     audioUrl: message.kind === 'voice' ? `/api/voice/audio/${message.id}` : null,
@@ -839,6 +868,79 @@ function markUnfolded(id, reader) {
     WHERE id = ? AND plane = 1 AND sender != ? AND unfolded_at IS NULL`).run(id, reader).changes > 0;
 }
 
+// ---- Tic-tac-toe. The server keeps the board and checks every move, so the page can't play out of turn.
+class GameError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const otherPlayer = player => (player === 'ayesha' ? 'zohaib' : 'ayesha');
+
+function gameScore() {
+  const score = { ayesha: 0, zohaib: 0, ties: 0 };
+  db.prepare("SELECT status, winner, COUNT(*) AS count FROM games WHERE status != 'playing' GROUP BY status, winner").all().forEach(row => {
+    if (row.status === 'tie') score.ties += row.count;
+    else if (row.winner in score) score[row.winner] += row.count;
+  });
+  return score;
+}
+
+// One game at a time. A rematch goes first to whoever went second last time; a new game, to whoever started it.
+function startGame(player, body) {
+  if (db.prepare("SELECT id FROM games WHERE status = 'playing'").get()) throw new GameError('Finish the game you’re playing first ♡', 409);
+  const given = typeof body?.stake === 'string' ? body.stake.trim() : body?.stake;
+  const stake = given === undefined || given === null || given === '' ? null : cleanText(given, 'The stakes', { maxLength: 1000 });
+  if (stake && stake.length > stakeMaxLength) throw new GameError(`The stakes can be up to ${stakeMaxLength} characters.`);
+  const previous = db.prepare('SELECT first_player FROM games ORDER BY id DESC LIMIT 1').get();
+  const first = body?.rematch === true && previous ? otherPlayer(previous.first_player) : player;
+  return db.transaction(() => {
+    const gameId = db.prepare('INSERT INTO games (first_player, turn, stake) VALUES (?, ?, ?)').run(first, first, stake).lastInsertRowid;
+    db.prepare("INSERT INTO voice_messages (sender, kind, body, game_id) VALUES (?, 'text', 'a game of tic-tac-toe ♡ vs ✦', ?)").run(player, gameId);
+    return { gameId, stake };
+  })();
+}
+
+function playMove(player, gameId, square) {
+  const game = db.prepare('SELECT * FROM games WHERE id = ?').get(gameId);
+  if (!game) throw new GameError('That game could not be found.', 404);
+  if (game.status !== 'playing') throw new GameError('This game is over. Start a rematch?', 409);
+  if (game.turn !== player) throw new GameError('It’s not your turn yet ♡', 409);
+  if (!Number.isInteger(square) || square < 0 || square > 8 || game.board[square] !== '.') throw new GameError('Pick an empty square.');
+  const piece = gamePieces[player];
+  const board = `${game.board.slice(0, square)}${piece}${game.board.slice(square + 1)}`;
+  const line = gameLines.find(squares => squares.every(index => board[index] === piece)) || null;
+  const status = line ? 'won' : board.includes('.') ? 'playing' : 'tie';
+  // Only lands on the board it was played on, so a double tap can't play twice. The move's time keeps milliseconds,
+  // so the card sorts after a message sent earlier in the same second.
+  const saved = db.prepare(`UPDATE games SET board = ?, last_square = ?, status = ?, winner = ?, win_line = ?, turn = ?,
+      updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now'), ended_at = CASE WHEN ? = 'playing' THEN NULL ELSE CURRENT_TIMESTAMP END
+    WHERE id = ? AND board = ? AND status = 'playing'`)
+    .run(board, square, status, line ? player : null, line ? line.join(',') : null, status === 'playing' ? otherPlayer(player) : null, status, game.id, game.board);
+  if (!saved.changes) throw new GameError('That square was just taken. Have another look.', 409);
+  return { status, winner: line ? player : null };
+}
+
+// Only the winner claims what the loser owes, once.
+function claimStake(player, gameId) {
+  return db.prepare("UPDATE games SET stake_claimed_at = CURRENT_TIMESTAMP WHERE id = ? AND winner = ? AND stake IS NOT NULL AND stake_claimed_at IS NULL")
+    .run(gameId, player).changes > 0;
+}
+
+// For her page: whether it's her move, how the last game ended, and when she last won (the bunny wears her crown that day).
+function gameNews() {
+  const playing = db.prepare("SELECT turn FROM games WHERE status = 'playing' ORDER BY id DESC LIMIT 1").get();
+  const last = db.prepare("SELECT winner, ended_at FROM games WHERE status != 'playing' ORDER BY id DESC LIMIT 1").get();
+  return {
+    playing: Boolean(playing),
+    yourTurn: playing?.turn === 'ayesha',
+    lastWinner: last?.winner || null,
+    lastEndedAt: last?.ended_at || null,
+    herLastWinAt: db.prepare("SELECT MAX(ended_at) AS at FROM games WHERE winner = 'ayesha'").get().at || null
+  };
+}
+
 function addVoiceMessage(sender, req) {
   const type = (req.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
   const extension = voiceAudioTypes[type];
@@ -853,10 +955,12 @@ function addVoiceMessage(sender, req) {
     .run(sender, fileName, type, durationMs, readReplyTo(req.get('X-Reply-To')));
 }
 
+// Deleting a game's card deletes the game too, so it never counts towards the score or blocks a new one.
 function deleteVoiceMessage(id, onlySender = null) {
-  const message = db.prepare('SELECT sender, audio_file FROM voice_messages WHERE id = ?').get(id);
+  const message = db.prepare('SELECT sender, audio_file, game_id FROM voice_messages WHERE id = ?').get(id);
   if (!message || (onlySender && message.sender !== onlySender)) return false;
   db.prepare('DELETE FROM voice_messages WHERE id = ?').run(id);
+  if (message.game_id) db.prepare('DELETE FROM games WHERE id = ?').run(message.game_id);
   if (message.audio_file) fs.rmSync(path.join(voiceDir, path.basename(message.audio_file)), { force: true });
   return true;
 }
@@ -864,6 +968,13 @@ function deleteVoiceMessage(id, onlySender = null) {
 // Sends a short push to Zohaib's phone through ntfy. Only says that something arrived; never the content.
 function sendPhoneAlert(req, message, tag) {
   return sendAlertFor(req.get('host') || 'localhost', message, tag);
+}
+
+// Her taps (invites, paper airplanes, game moves) wait quietly while he drives, and buzz together once he stops.
+function buzzOrHold(req, kind, message, tag) {
+  if (readStatus()?.key !== 'driving') return sendPhoneAlert(req, message, tag);
+  saveSetting.run('held_invites', JSON.stringify([...heldInvites(), { kind, host: req.get('host') || 'localhost' }]));
+  return null;
 }
 
 // The same buzz, for when there is no request to hand (her invites held back while he drives).
@@ -909,7 +1020,7 @@ app.post('/api/voice/unlock', (req, res) => {
 });
 
 app.get('/api/voice/session', requireVoice, (req, res) => {
-  res.json({ unread: unreadVoiceMessages('zohaib') });
+  res.json({ unread: unreadVoiceMessages('zohaib'), game: gameNews() });
 });
 
 // The bunny's wardrobe (her outfit, saved looks, visit days and unlocks), kept with her mailbox login so it follows her
@@ -964,9 +1075,7 @@ app.post('/api/voice/messages', requireVoice, limitAyeshaSending, (req, res) => 
   }
   ayeshaSendTimes.push(Date.now());
   if (kind === 'plane') {
-    // Like her other taps, a paper airplane waits quietly while he drives and buzzes once he stops.
-    if (readStatus()?.key === 'driving') saveSetting.run('held_invites', JSON.stringify([...heldInvites(), { kind, host: req.get('host') || 'localhost' }]));
-    else sendPhoneAlert(req, 'A paper airplane from Ayesha just landed ✈︎', 'airplane');
+    buzzOrHold(req, 'plane', 'A paper airplane from Ayesha just landed ✈︎', 'airplane');
     return res.status(201).json({ ok: true });
   }
   sendPhoneAlert(req, kind === 'sticker' ? 'Ayesha sent you a sticker ✦' : 'Ayesha sent you a little message ✦', 'speech_balloon');
@@ -981,6 +1090,41 @@ app.get('/api/voice/planes', requireVoice, (req, res) => {
 
 app.post('/api/voice/messages/:id/unfold', requireVoice, (req, res) => {
   if (markUnfolded(Number(req.params.id), 'ayesha')) sendPhoneAlert(req, 'Ayesha unfolded your paper airplane ♡', 'airplane');
+  res.status(204).end();
+});
+
+// Her side of tic-tac-toe; each of her moves buzzes his phone (held while he drives, like her other taps).
+function sendGameError(res, error) {
+  res.status(error.status || 400).json({ error: error.message });
+}
+
+app.post('/api/voice/games', requireVoice, (req, res) => {
+  let game;
+  try {
+    game = startGame('ayesha', req.body);
+  } catch (error) {
+    return sendGameError(res, error);
+  }
+  buzzOrHold(req, 'game', `Ayesha wants to play tic-tac-toe ♡${game.stake ? ' (with stakes 👀)' : ''}`, 'video_game');
+  res.status(201).json({ id: game.gameId });
+});
+
+app.post('/api/voice/games/:id/move', requireVoice, (req, res) => {
+  let result;
+  try {
+    result = playMove('ayesha', Number(req.params.id), req.body?.square);
+  } catch (error) {
+    return sendGameError(res, error);
+  }
+  if (result.status === 'won') buzzOrHold(req, 'game', 'Ayesha won tic-tac-toe 👑', 'crown');
+  else if (result.status === 'tie') buzzOrHold(req, 'game', 'Tic-tac-toe with Ayesha: a tie, so you both win a hug 🤗', 'hugs');
+  else buzzOrHold(req, 'game', 'Ayesha played ♡ your turn ✦', 'video_game');
+  res.json(result);
+});
+
+app.post('/api/voice/games/:id/claim', requireVoice, (req, res) => {
+  if (!claimStake('ayesha', Number(req.params.id))) return res.status(409).json({ error: 'There is nothing to claim on this game.' });
+  sendPhoneAlert(req, 'Ayesha claimed her prize 🏆', 'trophy');
   res.status(204).end();
 });
 
@@ -1100,7 +1244,8 @@ function releaseHeldInvites() {
   const held = heldInvites();
   if (!held.length || readStatus()?.key === 'driving') return;
   saveSetting.run('held_invites', '');
-  const sent = [...new Set(held.map(item => item.kind))].map(kind => (kind === 'plane' ? 'a paper airplane ✈︎' : statusInvites[kind]?.text)).filter(Boolean);
+  const heldLabels = { plane: 'a paper airplane ✈︎', game: 'tic-tac-toe ♡' };
+  const sent = [...new Set(held.map(item => item.kind))].map(kind => heldLabels[kind] || statusInvites[kind]?.text).filter(Boolean);
   if (sent.length) sendAlertFor(held.at(-1).host, `While you were driving, Ayesha sent: ${sent.join(' · ')}`, 'sparkling_heart');
 }
 
@@ -1258,6 +1403,27 @@ app.post('/api/admin/voice/messages/:id/played', requireAdmin, (req, res) => {
 
 app.post('/api/admin/voice/messages/:id/unfold', requireAdmin, (req, res) => {
   markUnfolded(Number(req.params.id), 'zohaib');
+  res.status(204).end();
+});
+
+app.post('/api/admin/voice/games', requireAdmin, (req, res) => {
+  try {
+    res.status(201).json({ id: startGame('zohaib', req.body).gameId });
+  } catch (error) {
+    sendGameError(res, error);
+  }
+});
+
+app.post('/api/admin/voice/games/:id/move', requireAdmin, (req, res) => {
+  try {
+    res.json(playMove('zohaib', Number(req.params.id), req.body?.square));
+  } catch (error) {
+    sendGameError(res, error);
+  }
+});
+
+app.post('/api/admin/voice/games/:id/claim', requireAdmin, (req, res) => {
+  if (!claimStake('zohaib', Number(req.params.id))) return res.status(409).json({ error: 'There is nothing to claim on this game.' });
   res.status(204).end();
 });
 
