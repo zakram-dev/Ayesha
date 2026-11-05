@@ -65,7 +65,8 @@
     games: {
       move: (id, square) => request(`/api/voice/games/${id}/move`, { method: 'POST', body: JSON.stringify({ square }) }),
       claim: id => request(`/api/voice/games/${id}/claim`, { method: 'POST' }),
-      rematch: stake => request('/api/voice/games', { method: 'POST', body: JSON.stringify({ stake, rematch: true }) })
+      rematch: stake => request('/api/voice/games', { method: 'POST', body: JSON.stringify({ stake, rematch: true }) }),
+      wait: (since, signal) => request(`/api/voice/games/wait?since=${since ?? ''}`, { signal })
     },
     onReply: target => composer.replyTo(target),
     refresh: () => loadThread().catch(() => {}),

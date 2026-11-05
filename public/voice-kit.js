@@ -16,7 +16,9 @@
   const planeMaxLength = 140;
   const planeIcon = '<svg class="plane-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 2.6 2.8 10.2l6.9 2.9 2.8 7 8.9-17.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /><path d="m21.4 2.6-11.7 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>';
   // Tic-tac-toe: her hearts against his stars (the same pieces and stakes limit as in server.js).
+  const gamePieces = { ayesha: 'h', zohaib: 's' };
   const gameSymbols = { ayesha: '♡', zohaib: '✦' };
+  const otherPlayer = player => (player === 'ayesha' ? 'zohaib' : 'ayesha');
   const stakeMaxLength = 80;
   const pieceArt = {
     h: '<svg class="ttt-piece is-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6C6.4 16.7 3.4 13.8 3.4 10.2c0-2.6 2-4.6 4.5-4.6 1.7 0 3.1.9 4.1 2.3 1-1.4 2.4-2.3 4.1-2.3 2.5 0 4.5 2 4.5 4.6 0 3.6-3 6.5-8.6 10.4Z" /></svg>',
@@ -174,7 +176,8 @@
       const taken = square !== '.';
       const label = `${['top', 'middle', 'bottom'][Math.floor(index / 3)]} ${['left', 'center', 'right'][index % 3]}${taken ? `, ${pieceNames[square]}` : ''}`;
       const classes = `ttt-cell${freshMove && index === game.lastSquare ? ' is-new' : ''}${game.line?.includes(index) ? ' is-winning' : ''}`;
-      return `<button class="${classes}" type="button" data-square="${index}" aria-label="${label}"${myTurn && !taken ? '' : ' disabled'}>${taken ? pieceArt[square] || '' : ''}</button>`;
+      // Squares you can't play are only marked so: a tap on one nudges "waiting for…" instead of doing nothing.
+      return `<button class="${classes}" type="button" data-square="${index}" aria-label="${label}"${myTurn && !taken ? '' : ' aria-disabled="true"'}>${taken ? pieceArt[square] || '' : ''}</button>`;
     }).join('');
     let line = '';
     if (game.line) {
@@ -220,8 +223,8 @@
     if (container.dataset.rendered && container.lastThreadKey === key) return false;
     const reactionsBefore = container.reactionsShown || new Map();
     container.reactionsShown = new Map(messages.filter(message => message.reaction).map(message => [message.id, message.reaction]));
-    const boardsBefore = container.boardsShown || new Map();
-    container.boardsShown = new Map(messages.filter(message => message.game).map(message => [message.game.id, message.game.board]));
+    const gamesBefore = container.gamesShown || new Map();
+    container.gamesShown = new Map(messages.filter(message => message.game).map(message => [message.game.id, { board: message.game.board, status: message.game.status }]));
     container.lastThreadKey = key;
     const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
     container.innerHTML = messages.length
@@ -240,10 +243,12 @@
           ? (message.kind === 'voice' && message.playedAt ? 'listened ✓' : message.plane && message.unfoldedAt ? 'unfolded ✓' : message.readAt ? 'seen ✓' : '')
           : '';
         // A move made since the last draw pops in (and a winning one draws its line).
-        const moved = Boolean(message.game && container.dataset.rendered && boardsBefore.has(message.game.id)
-          && boardsBefore.get(message.game.id) !== message.game.board);
+        // A move shown at once pops in then; the server's answer that it won draws the line a moment later.
+        const shownBefore = message.game && container.dataset.rendered ? gamesBefore.get(message.game.id) : null;
+        const moved = Boolean(shownBefore && shownBefore.board !== message.game.board);
+        const ended = Boolean(shownBefore && shownBefore.status === 'playing' && message.game.status !== 'playing');
         const body = message.game
-          ? gameCard(message.game, { me, names, freshMove: moved, freshEnd: moved && message.game.status !== 'playing' })
+          ? gameCard(message.game, { me, names, freshMove: moved, freshEnd: ended })
           : messageBody(message, '', mine);
         // A new or changed reaction pops in; the rest just sit there.
         const isNew = container.dataset.rendered && reactionsBefore.get(message.id) !== message.reaction;
@@ -292,6 +297,64 @@
       const redrew = renderThread(container, list, { me, names });
       if (redrew && selectedId) openActions(articleFor(selectedId));
     }
+
+    // A game's newest state, put straight into the thread without reloading it: the card goes to the bottom when a
+    // move was made (that's where its last move is), and every card's score and rematch button follow. Says false when
+    // the game's card isn't in the thread (a brand-new game), which needs the whole thread.
+    function applyGame(game) {
+      const card = game && messages.find(message => message.game?.id === game.id);
+      if (!card) return false;
+      const updated = { ...card, game };
+      let list = messages.map(message => {
+        if (message === card) return updated;
+        if (!message.game) return message;
+        return { ...message, game: { ...message.game, score: game.score, latest: game.latest ? false : message.game.latest } };
+      });
+      if (card.game.board !== game.board) list = [...list.filter(message => message !== updated), updated];
+      render(list);
+      return true;
+    }
+
+    // While the thread is open it waits for game news: the server answers the moment a move lands (or after 25
+    // seconds, and it asks again). If anything was missed, or a new game started, the whole thread reloads.
+    let gamesVersion = null;
+    let waiting = null;
+    let watching = false;
+    let retryMs = 2000;
+    async function watchGames() {
+      if (!games?.wait || !watching || waiting || document.hidden) return;
+      const asking = new AbortController();
+      waiting = asking;
+      try {
+        const news = await games.wait(gamesVersion, asking.signal);
+        if (waiting !== asking) return;
+        if (gamesVersion !== null && news.version !== gamesVersion) {
+          const settled = news.version === gamesVersion + 1 && applyGame(news.game);
+          if (!settled) await refresh();
+        }
+        gamesVersion = news.version;
+        retryMs = 2000;
+        waiting = null;
+        watchGames();
+      } catch (error) {
+        if (waiting !== asking) return;
+        waiting = null;
+        if (asking.signal.aborted) return;
+        // Offline for a moment (or the site is restarting): try again, a little later each time.
+        window.setTimeout(watchGames, retryMs);
+        retryMs = Math.min(retryMs * 2, 30000);
+      }
+    }
+
+    function stopWatching() {
+      waiting?.abort();
+      waiting = null;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopWatching();
+      else watchGames();
+    });
 
     function closeActions() {
       window.clearTimeout(armTimer);
@@ -381,18 +444,29 @@
       if (opened) replayClass(opened, 'just-opened');
     }
 
-    // The board redraws from what the server saved, so a move out of turn simply doesn't land.
+    // Your piece shows the moment you tap; the server's answer then settles the game (a win, a tie), or, if it refused
+    // the move, the board goes back to what it saved. Not your turn: "waiting for…" gives a little nudge.
+    let moving = false;
     async function playSquare(cell) {
-      const card = cell.closest('.ttt');
-      if (!games || !card || card.classList.contains('is-sending')) return;
-      card.classList.add('is-sending');
+      const game = byId(cell.closest('.voice-message')?.dataset.id)?.game;
+      const square = Number(cell.dataset.square);
+      if (!games || !game) return;
+      if (moving || game.status !== 'playing' || game.turn !== me || game.board[square] !== '.') {
+        const status = cell.closest('.ttt')?.querySelector('.ttt-status');
+        if (status && game.status === 'playing') replayClass(status, 'nudge');
+        return;
+      }
+      moving = true;
+      applyGame({ ...game, board: `${game.board.slice(0, square)}${gamePieces[me]}${game.board.slice(square + 1)}`, lastSquare: square, turn: otherPlayer(me) });
       try {
-        await games.move(Number(card.dataset.game), Number(cell.dataset.square));
+        const saved = await games.move(game.id, square);
+        if (!applyGame(saved?.game)) await refresh();
       } catch (error) {
         onError(error.message);
+        await refresh();
+      } finally {
+        moving = false;
       }
-      await refresh();
-      card.classList.remove('is-sending');
     }
 
     async function runGameAction(button) {
@@ -463,6 +537,8 @@
       if (square) return playSquare(square);
       const gameAction = event.target.closest('[data-game-act]');
       if (gameAction) return runGameAction(gameAction);
+      // A tap anywhere on the board is part of the game, never "open the message options".
+      if (event.target.closest('.ttt-board')) return;
       const action = event.target.closest('[data-act]');
       if (action) return runAction(action.dataset.act, action.closest('.voice-message'));
       if (event.target.closest('button, a')) return;
@@ -524,10 +600,18 @@
     container.addEventListener('pointercancel', endSwipe);
 
     return {
-      render,
+      // Showing the thread starts the wait for game news; stop ends it.
+      render(list) {
+        render(list);
+        watching = true;
+        watchGames();
+      },
       stop() {
         player.stop();
         closeActions();
+        watching = false;
+        gamesVersion = null;
+        stopWatching();
       }
     };
   }

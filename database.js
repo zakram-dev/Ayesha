@@ -85,7 +85,8 @@ db.exec(`
     stake_claimed_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ended_at TEXT
+    ended_at TEXT,
+    sort_after INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS voice_messages (
@@ -148,6 +149,12 @@ if (!quoteColumns.some(column => column.name === 'liked_at')) {
 if (!quoteColumns.some(column => column.name === 'opened_at')) {
   db.exec('ALTER TABLE quotes ADD COLUMN opened_at TEXT');
   db.prepare('UPDATE quotes SET opened_at = CURRENT_TIMESTAMP').run();
+}
+
+// A game card sits in the chat at its last move, right after the newest message there was then (exact even when a
+// message and a move share a second).
+if (!db.prepare('PRAGMA table_info(games)').all().some(column => column.name === 'sort_after')) {
+  db.exec('ALTER TABLE games ADD COLUMN sort_after INTEGER');
 }
 
 // Her comments on sealed notes are mailbox messages that remember which note they are about.

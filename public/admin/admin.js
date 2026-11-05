@@ -181,7 +181,8 @@ const voiceChat = window.VoiceKit.mountThread(voiceThread, {
   games: {
     move: (id, square) => request(`/api/admin/voice/games/${id}/move`, { method: 'POST', body: JSON.stringify({ square }) }),
     claim: id => request(`/api/admin/voice/games/${id}/claim`, { method: 'POST' }),
-    rematch: stake => request('/api/admin/voice/games', { method: 'POST', body: JSON.stringify({ stake, rematch: true }) })
+    rematch: stake => request('/api/admin/voice/games', { method: 'POST', body: JSON.stringify({ stake, rematch: true }) }),
+    wait: (since, signal) => request(`/api/admin/voice/games/wait?since=${since ?? ''}`, { signal })
   },
   onReply: target => voiceComposer.replyTo(target),
   refresh: loadVoiceThread,

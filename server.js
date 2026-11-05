@@ -748,7 +748,8 @@ function replyPreview(message) {
   return text.length > 90 ? `${text.slice(0, 90)}…` : text;
 }
 
-// A game card sits where its last move was, so the board comes back to the bottom of the chat each time someone plays.
+// A game card sits where its last move was (that second, after the newest message then), so the board comes back to
+// the bottom of the chat each time someone plays.
 function listVoiceMessages(reader) {
   db.prepare('UPDATE voice_messages SET read_at = CURRENT_TIMESTAMP WHERE sender != ? AND read_at IS NULL').run(reader);
   const score = gameScore();
@@ -760,13 +761,13 @@ function listVoiceMessages(reader) {
         r.kind AS reply_kind, r.body AS reply_body, r.duration_ms AS reply_duration_ms, r.sticker AS reply_sticker, r.plane AS reply_plane,
         r.game_id AS reply_game_id, g.id AS g_id, g.board AS g_board, g.first_player AS g_first, g.turn AS g_turn, g.status AS g_status,
         g.winner AS g_winner, g.win_line AS g_line, g.last_square AS g_last, g.stake AS g_stake, g.stake_claimed_at AS g_claimed,
-        COALESCE(g.updated_at, m.created_at) AS sort_at
+        COALESCE(g.updated_at, m.created_at) AS sort_at, CASE WHEN g.sort_after IS NULL THEN m.id ELSE g.sort_after + 0.5 END AS sort_id
       FROM voice_messages m
       LEFT JOIN quotes q ON q.id = m.quote_id
       LEFT JOIN voice_messages r ON r.id = m.reply_to
       LEFT JOIN games g ON g.id = m.game_id
-      ORDER BY sort_at DESC, m.id DESC LIMIT 200
-    ) ORDER BY sort_at, id
+      ORDER BY sort_at DESC, sort_id DESC LIMIT 200
+    ) ORDER BY sort_at, sort_id
   `).all().map(message => ({
     id: message.id,
     sender: message.sender,
@@ -776,20 +777,10 @@ function listVoiceMessages(reader) {
     plane: Boolean(message.plane),
     unfoldedAt: message.unfolded_at,
     game: message.g_id
-      ? {
-        id: message.g_id,
-        board: message.g_board,
-        first: message.g_first,
-        turn: message.g_turn,
-        status: message.g_status,
-        winner: message.g_winner,
-        line: message.g_line ? message.g_line.split(',').map(Number) : null,
-        lastSquare: message.g_last,
-        stake: message.g_stake,
-        stakeClaimedAt: message.g_claimed,
-        latest: message.g_id === latestGameId,
-        score
-      }
+      ? shapeGame({
+        id: message.g_id, board: message.g_board, first_player: message.g_first, turn: message.g_turn, status: message.g_status,
+        winner: message.g_winner, win_line: message.g_line, last_square: message.g_last, stake: message.g_stake, stake_claimed_at: message.g_claimed
+      }, latestGameId, score)
       : null,
     note: message.quote_id ? (message.note_text || 'a note that has since been removed') : null,
     // The message it answers; if that one was unsent or deleted, the reply still says so.
@@ -878,6 +869,62 @@ class GameError extends Error {
 
 const otherPlayer = player => (player === 'ayesha' ? 'zohaib' : 'ayesha');
 
+// A game as its chat card draws it.
+function shapeGame(game, latestGameId, score) {
+  return {
+    id: game.id,
+    board: game.board,
+    first: game.first_player,
+    turn: game.turn,
+    status: game.status,
+    winner: game.winner,
+    line: game.win_line ? game.win_line.split(',').map(Number) : null,
+    lastSquare: game.last_square,
+    stake: game.stake,
+    stakeClaimedAt: game.stake_claimed_at,
+    latest: game.id === latestGameId,
+    score
+  };
+}
+
+function gameView(id) {
+  const game = db.prepare('SELECT * FROM games WHERE id = ?').get(id);
+  return game ? shapeGame(game, db.prepare('SELECT MAX(id) AS id FROM games').get().id, gameScore()) : null;
+}
+
+// An open chat asks to be told when a game changes, and is answered the moment one does (or after 25 seconds, and it
+// asks again), so the other one's move shows in about a third of a second. These are ordinary requests, so they pass
+// Cloudflare and a restart like any other; on shutdown every waiting chat is answered at once. The version starts at
+// the boot time, so a chat that was waiting on the old server simply reloads.
+let gamesVersion = Date.now();
+let lastChangedGameId = null;
+let shuttingDown = false;
+const gameWaiters = new Set();
+
+function answerGameWaiter(waiter) {
+  gameWaiters.delete(waiter);
+  clearTimeout(waiter.timer);
+  if (!waiter.res.headersSent) waiter.res.json({ version: gamesVersion, game: lastChangedGameId ? gameView(lastChangedGameId) : null });
+}
+
+function gamesChanged(gameId) {
+  gamesVersion += 1;
+  lastChangedGameId = gameId;
+  [...gameWaiters].forEach(answerGameWaiter);
+}
+
+function waitForGames(req, res) {
+  res.set('Cache-Control', 'private, no-store');
+  const waiter = { res, timer: null };
+  if (Number(req.query.since) !== gamesVersion || shuttingDown) return answerGameWaiter(waiter);
+  waiter.timer = setTimeout(() => answerGameWaiter(waiter), 25000);
+  gameWaiters.add(waiter);
+  res.on('close', () => {
+    gameWaiters.delete(waiter);
+    clearTimeout(waiter.timer);
+  });
+}
+
 function gameScore() {
   const score = { ayesha: 0, zohaib: 0, ties: 0 };
   db.prepare("SELECT status, winner, COUNT(*) AS count FROM games WHERE status != 'playing' GROUP BY status, winner").all().forEach(row => {
@@ -895,11 +942,13 @@ function startGame(player, body) {
   if (stake && stake.length > stakeMaxLength) throw new GameError(`The stakes can be up to ${stakeMaxLength} characters.`);
   const previous = db.prepare('SELECT first_player FROM games ORDER BY id DESC LIMIT 1').get();
   const first = body?.rematch === true && previous ? otherPlayer(previous.first_player) : player;
-  return db.transaction(() => {
+  const started = db.transaction(() => {
     const gameId = db.prepare('INSERT INTO games (first_player, turn, stake) VALUES (?, ?, ?)').run(first, first, stake).lastInsertRowid;
     db.prepare("INSERT INTO voice_messages (sender, kind, body, game_id) VALUES (?, 'text', 'a game of tic-tac-toe ♡ vs ✦', ?)").run(player, gameId);
     return { gameId, stake };
   })();
+  gamesChanged(started.gameId);
+  return started;
 }
 
 function playMove(player, gameId, square) {
@@ -912,20 +961,24 @@ function playMove(player, gameId, square) {
   const board = `${game.board.slice(0, square)}${piece}${game.board.slice(square + 1)}`;
   const line = gameLines.find(squares => squares.every(index => board[index] === piece)) || null;
   const status = line ? 'won' : board.includes('.') ? 'playing' : 'tie';
-  // Only lands on the board it was played on, so a double tap can't play twice. The move's time keeps milliseconds,
-  // so the card sorts after a message sent earlier in the same second.
+  // Only lands on the board it was played on, so a double tap can't play twice. The card then sorts at this second,
+  // after the newest message so far.
   const saved = db.prepare(`UPDATE games SET board = ?, last_square = ?, status = ?, winner = ?, win_line = ?, turn = ?,
-      updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now'), ended_at = CASE WHEN ? = 'playing' THEN NULL ELSE CURRENT_TIMESTAMP END
+      updated_at = CURRENT_TIMESTAMP, sort_after = (SELECT MAX(id) FROM voice_messages),
+      ended_at = CASE WHEN ? = 'playing' THEN NULL ELSE CURRENT_TIMESTAMP END
     WHERE id = ? AND board = ? AND status = 'playing'`)
     .run(board, square, status, line ? player : null, line ? line.join(',') : null, status === 'playing' ? otherPlayer(player) : null, status, game.id, game.board);
   if (!saved.changes) throw new GameError('That square was just taken. Have another look.', 409);
-  return { status, winner: line ? player : null };
+  gamesChanged(game.id);
+  return { status, winner: line ? player : null, game: gameView(game.id) };
 }
 
 // Only the winner claims what the loser owes, once.
 function claimStake(player, gameId) {
-  return db.prepare("UPDATE games SET stake_claimed_at = CURRENT_TIMESTAMP WHERE id = ? AND winner = ? AND stake IS NOT NULL AND stake_claimed_at IS NULL")
+  const claimed = db.prepare("UPDATE games SET stake_claimed_at = CURRENT_TIMESTAMP WHERE id = ? AND winner = ? AND stake IS NOT NULL AND stake_claimed_at IS NULL")
     .run(gameId, player).changes > 0;
+  if (claimed) gamesChanged(gameId);
+  return claimed;
 }
 
 // For her page: whether it's her move, how the last game ended, and when she last won (the bunny wears her crown that day).
@@ -960,7 +1013,10 @@ function deleteVoiceMessage(id, onlySender = null) {
   const message = db.prepare('SELECT sender, audio_file, game_id FROM voice_messages WHERE id = ?').get(id);
   if (!message || (onlySender && message.sender !== onlySender)) return false;
   db.prepare('DELETE FROM voice_messages WHERE id = ?').run(id);
-  if (message.game_id) db.prepare('DELETE FROM games WHERE id = ?').run(message.game_id);
+  if (message.game_id) {
+    db.prepare('DELETE FROM games WHERE id = ?').run(message.game_id);
+    gamesChanged(message.game_id);
+  }
   if (message.audio_file) fs.rmSync(path.join(voiceDir, path.basename(message.audio_file)), { force: true });
   return true;
 }
@@ -1097,6 +1153,8 @@ app.post('/api/voice/messages/:id/unfold', requireVoice, (req, res) => {
 function sendGameError(res, error) {
   res.status(error.status || 400).json({ error: error.message });
 }
+
+app.get('/api/voice/games/wait', requireVoice, waitForGames);
 
 app.post('/api/voice/games', requireVoice, (req, res) => {
   let game;
@@ -1406,6 +1464,8 @@ app.post('/api/admin/voice/messages/:id/unfold', requireAdmin, (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/admin/voice/games/wait', requireAdmin, waitForGames);
+
 app.post('/api/admin/voice/games', requireAdmin, (req, res) => {
   try {
     res.status(201).json({ id: startGame('zohaib', req.body).gameId });
@@ -1500,6 +1560,9 @@ server.listen(listenOptions);
 
 function shutdown(signal) {
   console.log(`${signal} received; finishing open requests before exiting.`);
+  // Chats waiting for a game move are answered now, so they don't hold the old server open.
+  shuttingDown = true;
+  [...gameWaiters].forEach(answerGameWaiter);
   server.close(() => {
     db.close();
     process.exit(0);
