@@ -139,7 +139,9 @@ if (!voiceMessageColumns.some(column => column.name === 'quote_id')) {
 }
 // Chat extras: the message it replies to, an emoji reaction from the one who received it, when a voice note was first
 // played by the one who received it, and which bunny sticker it is (stickers are saved as text, so older code still reads them).
-for (const [column, type] of [['reply_to', 'INTEGER'], ['reaction', 'TEXT'], ['played_at', 'TEXT'], ['sticker', 'TEXT']]) {
+// A paper airplane is a short text message too, folded until the one who received it unfolds it.
+for (const [column, type] of [['reply_to', 'INTEGER'], ['reaction', 'TEXT'], ['played_at', 'TEXT'], ['sticker', 'TEXT'],
+  ['plane', 'INTEGER NOT NULL DEFAULT 0'], ['unfolded_at', 'TEXT']]) {
   if (!voiceMessageColumns.some(existing => existing.name === column)) db.exec(`ALTER TABLE voice_messages ADD COLUMN ${column} ${type}`);
 }
 

@@ -158,6 +158,11 @@ const voiceComposer = window.VoiceKit.mountComposer(document.querySelector('#adm
   async sendSticker(sticker, replyTo) {
     await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ sticker, replyTo }) });
     await loadVoiceThread();
+  },
+  // It flies in on her page and waits, folded, until she taps it.
+  async sendPlane(plane) {
+    await request('/api/admin/voice/messages', { method: 'POST', body: JSON.stringify({ plane }) });
+    await loadVoiceThread();
   }
 });
 
@@ -168,6 +173,7 @@ const voiceChat = window.VoiceKit.mountThread(voiceThread, {
   react: (id, reaction) => request(`/api/admin/voice/messages/${id}/reaction`, { method: 'PUT', body: JSON.stringify({ reaction }) }),
   played: id => request(`/api/admin/voice/messages/${id}/played`, { method: 'POST' }),
   remove: id => request(`/api/admin/voice/messages/${id}`, { method: 'DELETE' }),
+  unfold: id => request(`/api/admin/voice/messages/${id}/unfold`, { method: 'POST' }),
   onReply: target => voiceComposer.replyTo(target),
   refresh: loadVoiceThread,
   onError: message => showStatus(message, true)

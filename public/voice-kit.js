@@ -12,6 +12,11 @@
   // The emoji either of you can react with (the same list is in server.js); a double-tap is the first one.
   const reactions = ['❤️', '😂', '🥰', '🥺', '😮', '😢'];
   const trashIcon = '<svg class="trash-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9.5 7V4.8c0-.4.4-.8.8-.8h3.4c.4 0 .8.4.8.8V7M6.5 7l.9 12.2c.1 1 .8 1.8 1.8 1.8h5.6c1 0 1.7-.8 1.8-1.8L17.5 7M10.2 10.5v6.5M13.8 10.5v6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>';
+  // Matches planeMaxLength in server.js.
+  const planeMaxLength = 140;
+  const planeIcon = '<svg class="plane-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 2.6 2.8 10.2l6.9 2.9 2.8 7 8.9-17.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /><path d="m21.4 2.6-11.7 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>';
+  // A folded paper airplane, waiting to be tapped open.
+  const foldedPlane = '<svg class="voice-plane-art" viewBox="0 0 64 44" aria-hidden="true"><path d="M62 3 3 21l19 6.5Z" fill="#fffaf8" stroke="#e3a9bc" stroke-linejoin="round" /><path d="M62 3 22 27.5 27 41Z" fill="#f6cbd8" stroke="#e3a9bc" stroke-linejoin="round" /><path d="M62 3 22 27.5l9.5 3.2Z" fill="#ec9fb8" /></svg>';
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -36,6 +41,7 @@
   // A short line about a message, for the "replying to" bar.
   function previewOf(message) {
     if (message.sticker) return 'a bunny sticker';
+    if (message.plane) return 'a paper airplane ✈︎';
     if (message.kind === 'voice') return `voice note · ${formatDuration(message.durationMs)}`;
     const text = message.text || '';
     return text.length > 90 ? `${text.slice(0, 90)}…` : text;
@@ -128,8 +134,15 @@
   }
 
   // A sticker carries its reaction on the bunny itself; a bubble carries it on its corner.
-  function messageBody(message, reaction) {
+  // A paper airplane thrown to you stays folded until you tap it; your own (or one you opened) reads as a little lined note.
+  function messageBody(message, reaction, mine) {
     if (message.sticker && window.BunnyStickers) return `<div class="voice-sticker">${window.BunnyStickers.svg(message.sticker)}${reaction}</div>`;
+    if (message.plane && !mine && !message.unfoldedAt) {
+      return `<button class="voice-plane-fold" type="button" data-unfold aria-label="Unfold the paper airplane">${foldedPlane}<span>a paper airplane<small>tap to unfold ✈︎</small></span></button>`;
+    }
+    if (message.plane) {
+      return `<p class="voice-plane-tag">${planeIcon} paper airplane</p><p class="voice-plane-note">${escapeHtml(message.text)}</p>`;
+    }
     if (message.kind === 'voice') {
       return `<div class="voice-clip">
           <button class="voice-play" type="button" data-src="${escapeHtml(message.audioUrl)}" data-duration="${message.durationMs}" aria-label="Play voice note">▶</button>
@@ -161,15 +174,17 @@
         const note = message.note
           ? `<blockquote class="voice-note-quote"><small>about the note</small><span>${escapeHtml(message.note)}</span></blockquote>`
           : '';
-        const seen = mine ? (message.kind === 'voice' && message.playedAt ? 'listened ✓' : message.readAt ? 'seen ✓' : '') : '';
+        const seen = mine
+          ? (message.kind === 'voice' && message.playedAt ? 'listened ✓' : message.plane && message.unfoldedAt ? 'unfolded ✓' : message.readAt ? 'seen ✓' : '')
+          : '';
         // A new or changed reaction pops in; the rest just sit there.
         const isNew = container.dataset.rendered && reactionsBefore.get(message.id) !== message.reaction;
         const reaction = message.reaction
           ? `<span class="voice-reaction${isNew ? ' pop' : ''}" role="img" aria-label="reacted ${escapeHtml(message.reaction)}">${escapeHtml(message.reaction)}</span>`
           : '';
-        return `<article class="voice-message ${mine ? 'mine' : 'theirs'}${message.sticker ? ' is-sticker' : ''}${message.reaction ? ' has-reaction' : ''}" data-id="${message.id}" tabindex="0">
+        return `<article class="voice-message ${mine ? 'mine' : 'theirs'}${message.sticker ? ' is-sticker' : ''}${message.plane ? ' is-plane' : ''}${message.reaction ? ' has-reaction' : ''}" data-id="${message.id}" tabindex="0">
           <small class="voice-meta">${escapeHtml(names[message.sender])} · ${escapeHtml(formatWhen(message.createdAt))}</small>
-          ${reply}${note}${message.sticker ? messageBody(message, reaction) : messageBody(message, '') + reaction}
+          ${reply}${note}${message.sticker ? messageBody(message, reaction, mine) : messageBody(message, '', mine) + reaction}
           ${seen ? `<div class="voice-foot"><small class="voice-seen">${seen}</small></div>` : ''}
         </article>`;
       }).join('')
@@ -180,8 +195,8 @@
   }
 
   // The thread with everything you can do to a message: tap for react / reply / unsend, double-tap for ❤️,
-  // swipe right to reply, tap a quote to jump to the message it answers.
-  function mountThread(container, { me, names, react, played, unsend, remove, onReply, refresh, onError = window.alert }) {
+  // swipe right to reply, tap a quote to jump to the message it answers, tap a folded paper airplane to open it.
+  function mountThread(container, { me, names, react, played, unsend, remove, unfold, onReply, refresh, onError = window.alert }) {
     let messages = [];
     let selectedId = null;
     let tapTimer = null;
@@ -281,6 +296,22 @@
       setReaction(message, reactions[0]);
     }
 
+    // It opens once it is saved as unfolded, so the paper opens on the note that stays.
+    async function unfoldPlane(button) {
+      const message = byId(button.closest('.voice-message').dataset.id);
+      if (!message || !unfold) return;
+      button.disabled = true;
+      try {
+        await unfold(message.id);
+      } catch (error) {
+        button.disabled = false;
+        return onError(error.message);
+      }
+      await refresh();
+      const opened = articleFor(message.id)?.querySelector('.voice-plane-note');
+      if (opened) replayClass(opened, 'just-opened');
+    }
+
     async function runAction(action, article) {
       const message = byId(article.dataset.id);
       if (!message) return;
@@ -329,6 +360,8 @@
         if (message) setReaction(message, choice.dataset.react === message.reaction ? null : choice.dataset.react);
         return;
       }
+      const folded = event.target.closest('[data-unfold]');
+      if (folded) return unfoldPlane(folded);
       const action = event.target.closest('[data-act]');
       if (action) return runAction(action.dataset.act, action.closest('.voice-message'));
       if (event.target.closest('button, a')) return;
@@ -399,8 +432,8 @@
   }
 
   // Record → listen back → send (or redo), a text box that grows and keeps an unsent draft, bunny stickers,
-  // and the "replying to" bar.
-  function mountComposer(root, { sendVoice, sendText, sendSticker, placeholder = 'or type a little message…', draftKey }) {
+  // the "replying to" bar, and (where sendPlane is given) ✈︎ to throw what is typed as a paper airplane.
+  function mountComposer(root, { sendVoice, sendText, sendSticker, sendPlane, placeholder = 'or type a little message…', draftKey }) {
     const stickers = sendSticker && window.BunnyStickers ? window.BunnyStickers : null;
     root.classList.add('voice-composer');
     root.innerHTML = `
@@ -428,6 +461,7 @@
       <form class="voice-text-form">
         ${stickers ? `<button class="voice-sticker-toggle" type="button" aria-label="Bunny stickers" aria-expanded="false">${stickers.icon}</button>` : ''}
         <textarea rows="1" maxlength="1000" placeholder="${escapeHtml(placeholder)}" aria-label="Type a message" required></textarea>
+        ${sendPlane ? `<button class="voice-plane-throw" type="button" aria-label="Throw it as a paper airplane" title="throw it as a paper airplane">${planeIcon}</button>` : ''}
         <button type="submit">send</button>
       </form>
       <p class="voice-status" role="status"></p>`;
@@ -592,6 +626,33 @@
         status.textContent = error.message;
       } finally {
         button.disabled = false;
+      }
+    });
+
+    const planeButton = root.querySelector('.voice-plane-throw');
+    planeButton?.addEventListener('click', async () => {
+      const text = textBox.value.trim();
+      if (!text) {
+        status.textContent = 'Write one little line, then tap ✈︎ to throw it as a paper airplane.';
+        textBox.focus();
+        return;
+      }
+      if (text.length > planeMaxLength) {
+        status.textContent = `A paper airplane only fits ${planeMaxLength} characters (this is ${text.length}).`;
+        return;
+      }
+      planeButton.disabled = true;
+      try {
+        await sendPlane(text);
+        textBox.value = '';
+        draft.save('');
+        growTextBox();
+        setReply(null);
+        status.textContent = 'Thrown ✈︎';
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        planeButton.disabled = false;
       }
     });
 

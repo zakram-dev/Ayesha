@@ -56,6 +56,9 @@
     react: (id, reaction) => request(`/api/voice/messages/${id}/reaction`, { method: 'PUT', body: JSON.stringify({ reaction }) }),
     played: id => request(`/api/voice/messages/${id}/played`, { method: 'POST' }),
     unsend: id => request(`/api/voice/messages/${id}`, { method: 'DELETE' }),
+    // The page's corner airplane (paper-plane.js) listens, so one opened here doesn't land there too.
+    unfold: id => request(`/api/voice/messages/${id}/unfold`, { method: 'POST' })
+      .then(() => window.dispatchEvent(new CustomEvent('plane:unfolded', { detail: { id } }))),
     onReply: target => composer.replyTo(target),
     refresh: () => loadThread().catch(() => {}),
     onError: message => composer.showStatus(message)

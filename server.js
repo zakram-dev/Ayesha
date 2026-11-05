@@ -23,6 +23,8 @@ const maxVoiceNoteMs = 125 * 1000;
 const voiceAudioTypes = { 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/aac': 'aac' };
 // The bunny stickers either of them can send (ids match public/bunny-stickers.js); the words are kept as the message text.
 const bunnyStickers = { wave: 'a waving bunny', heart: 'a bunny holding a heart', blush: 'a shy, blushing bunny', sleepy: 'a sleepy bunny', yay: 'a happy bunny', hug: 'a bunny hug' };
+// A paper airplane carries one short line (the same limit is in public/paper-plane.js and voice-kit.js).
+const planeMaxLength = 140;
 // She can take back a message for this long after sending it.
 const unsendMinutes = 5;
 // The emoji either of them can react with (the same list is in public/voice-kit.js).
@@ -716,8 +718,10 @@ function readSetting(key) {
   return db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
 }
 
+// His paper airplanes fly in on her page by themselves, so they are not mail for the bunny to bring.
 function unreadVoiceMessages(sender) {
-  return db.prepare('SELECT COUNT(*) AS count FROM voice_messages WHERE sender = ? AND read_at IS NULL').get(sender).count;
+  return db.prepare("SELECT COUNT(*) AS count FROM voice_messages WHERE sender = ? AND read_at IS NULL AND (plane = 0 OR sender = 'ayesha')")
+    .get(sender).count;
 }
 
 function requireVoice(req, res, next) {
@@ -729,6 +733,7 @@ function requireVoice(req, res, next) {
 // A short line about a message, for the quote above a reply.
 function replyPreview(message) {
   if (message.sticker) return 'a bunny sticker';
+  if (message.plane) return 'a paper airplane ✈︎';
   if (message.kind === 'voice') {
     const seconds = Math.round((message.duration_ms || 0) / 1000);
     return `voice note · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -742,8 +747,8 @@ function listVoiceMessages(reader) {
   return db.prepare(`
     SELECT * FROM (
       SELECT m.id, m.sender, m.kind, m.body, m.duration_ms, m.created_at, m.read_at, m.quote_id, m.reply_to, m.reaction,
-        m.played_at, m.sticker, q.text AS note_text, r.id AS reply_id, r.sender AS reply_sender, r.kind AS reply_kind,
-        r.body AS reply_body, r.duration_ms AS reply_duration_ms, r.sticker AS reply_sticker
+        m.played_at, m.sticker, m.plane, m.unfolded_at, q.text AS note_text, r.id AS reply_id, r.sender AS reply_sender,
+        r.kind AS reply_kind, r.body AS reply_body, r.duration_ms AS reply_duration_ms, r.sticker AS reply_sticker, r.plane AS reply_plane
       FROM voice_messages m
       LEFT JOIN quotes q ON q.id = m.quote_id
       LEFT JOIN voice_messages r ON r.id = m.reply_to
@@ -755,11 +760,13 @@ function listVoiceMessages(reader) {
     kind: message.kind,
     text: message.body,
     sticker: bunnyStickers[message.sticker] ? message.sticker : null,
+    plane: Boolean(message.plane),
+    unfoldedAt: message.unfolded_at,
     note: message.quote_id ? (message.note_text || 'a note that has since been removed') : null,
     // The message it answers; if that one was unsent or deleted, the reply still says so.
     replyTo: message.reply_to
       ? (message.reply_id
-        ? { id: message.reply_id, sender: message.reply_sender, preview: replyPreview({ kind: message.reply_kind, body: message.reply_body, duration_ms: message.reply_duration_ms, sticker: message.reply_sticker }) }
+        ? { id: message.reply_id, sender: message.reply_sender, preview: replyPreview({ kind: message.reply_kind, body: message.reply_body, duration_ms: message.reply_duration_ms, sticker: message.reply_sticker, plane: message.reply_plane }) }
         : { id: null, gone: true })
       : null,
     audioUrl: message.kind === 'voice' ? `/api/voice/audio/${message.id}` : null,
@@ -786,9 +793,15 @@ function readReplyTo(value) {
   return db.prepare('SELECT id FROM voice_messages WHERE id = ?').get(id) ? id : null;
 }
 
-// A typed message or a bunny sticker; returns which, for the buzz on his phone.
+// A typed message, a bunny sticker or a paper airplane; returns which, for the buzz on his phone.
 function addTextMessage(sender, req) {
   const replyTo = readReplyTo(req.body?.replyTo);
+  if (req.body?.plane !== undefined) {
+    const line = cleanText(req.body.plane, 'A paper airplane', { maxLength: 1000 });
+    if (line.length > planeMaxLength) throw new Error(`A paper airplane only fits ${planeMaxLength} characters.`);
+    db.prepare("INSERT INTO voice_messages (sender, kind, body, plane) VALUES (?, 'text', ?, 1)").run(sender, line);
+    return 'plane';
+  }
   if (req.body?.sticker !== undefined) {
     const sticker = String(req.body.sticker);
     if (!bunnyStickers[sticker]) throw new Error('That sticker is not one of the bunnies.');
@@ -818,6 +831,12 @@ function setReaction(id, receiver, reaction) {
 function markPlayed(id, listener) {
   return db.prepare("UPDATE voice_messages SET played_at = COALESCE(played_at, CURRENT_TIMESTAMP) WHERE id = ? AND kind = 'voice' AND sender != ?")
     .run(id, listener).changes > 0;
+}
+
+// Unfolding a paper airplane from the other one also counts as reading it. Says whether this was the first time.
+function markUnfolded(id, reader) {
+  return db.prepare(`UPDATE voice_messages SET unfolded_at = CURRENT_TIMESTAMP, read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
+    WHERE id = ? AND plane = 1 AND sender != ? AND unfolded_at IS NULL`).run(id, reader).changes > 0;
 }
 
 function addVoiceMessage(sender, req) {
@@ -944,8 +963,25 @@ app.post('/api/voice/messages', requireVoice, limitAyeshaSending, (req, res) => 
     return res.status(400).json({ error: error.message });
   }
   ayeshaSendTimes.push(Date.now());
+  if (kind === 'plane') {
+    // Like her other taps, a paper airplane waits quietly while he drives and buzzes once he stops.
+    if (readStatus()?.key === 'driving') saveSetting.run('held_invites', JSON.stringify([...heldInvites(), { kind, host: req.get('host') || 'localhost' }]));
+    else sendPhoneAlert(req, 'A paper airplane from Ayesha just landed ✈︎', 'airplane');
+    return res.status(201).json({ ok: true });
+  }
   sendPhoneAlert(req, kind === 'sticker' ? 'Ayesha sent you a sticker ✦' : 'Ayesha sent you a little message ✦', 'speech_balloon');
   res.status(201).json({ ok: true });
+});
+
+// His paper airplanes she has not unfolded yet; her page flies them in. Looking does not mark them read.
+app.get('/api/voice/planes', requireVoice, (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.json(db.prepare("SELECT id, body AS text, created_at AS createdAt FROM voice_messages WHERE sender = 'zohaib' AND plane = 1 AND unfolded_at IS NULL ORDER BY id LIMIT 10").all());
+});
+
+app.post('/api/voice/messages/:id/unfold', requireVoice, (req, res) => {
+  if (markUnfolded(Number(req.params.id), 'ayesha')) sendPhoneAlert(req, 'Ayesha unfolded your paper airplane ♡', 'airplane');
+  res.status(204).end();
 });
 
 app.put('/api/voice/messages/:id/reaction', requireVoice, (req, res) => {
@@ -1064,7 +1100,7 @@ function releaseHeldInvites() {
   const held = heldInvites();
   if (!held.length || readStatus()?.key === 'driving') return;
   saveSetting.run('held_invites', '');
-  const sent = [...new Set(held.map(item => item.kind))].filter(kind => statusInvites[kind]).map(kind => statusInvites[kind].text);
+  const sent = [...new Set(held.map(item => item.kind))].map(kind => (kind === 'plane' ? 'a paper airplane ✈︎' : statusInvites[kind]?.text)).filter(Boolean);
   if (sent.length) sendAlertFor(held.at(-1).host, `While you were driving, Ayesha sent: ${sent.join(' · ')}`, 'sparkling_heart');
 }
 
@@ -1217,6 +1253,11 @@ app.put('/api/admin/voice/messages/:id/reaction', requireAdmin, (req, res) => {
 
 app.post('/api/admin/voice/messages/:id/played', requireAdmin, (req, res) => {
   markPlayed(Number(req.params.id), 'zohaib');
+  res.status(204).end();
+});
+
+app.post('/api/admin/voice/messages/:id/unfold', requireAdmin, (req, res) => {
+  markUnfolded(Number(req.params.id), 'zohaib');
   res.status(204).end();
 });
 

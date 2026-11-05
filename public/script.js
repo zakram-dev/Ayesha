@@ -693,6 +693,8 @@ bunny.addEventListener('click', () => {
   bunnySay(nextBunnyLine(), 2800);
 });
 bunnyBubble.addEventListener('click', () => { if (bunnyHasMail) openMailboxFromBunny(); });
+// The bunny notices when a paper airplane lands in the corner (paper-plane.js).
+window.addEventListener('plane:landed', () => bunnySay('ooh, a paper airplane ✈︎', 3200));
 
 fetch('/api/bunny').then(response => (response.ok ? response.json() : null)).then(settings => {
   if (!settings?.enabled || !settings.lines.length) return;
