@@ -70,6 +70,31 @@ db.exec(`
     expires_at INTEGER NOT NULL
   );
 
+  -- Her visits, for the admin "Her visits" tab: one row per visit from her signed-in browser (which mailbox login, a
+  -- rough device name, how long the page was really on her screen, and where that time went), and what she did on it.
+  -- Only this site's own pages are recorded; rows older than 90 days are deleted.
+  CREATE TABLE IF NOT EXISTS her_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    login_hash TEXT NOT NULL,
+    device TEXT,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    active_seconds INTEGER NOT NULL DEFAULT 0,
+    areas TEXT NOT NULL DEFAULT '{}'
+  );
+
+  CREATE TABLE IF NOT EXISTS her_activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    visit_id INTEGER NOT NULL REFERENCES her_visits(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    detail TEXT,
+    category TEXT,
+    count INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS her_activity_visit ON her_activity (visit_id);
+
   -- Tic-tac-toe in the mailbox: the board is nine squares ('.' empty, 'h' her heart, 's' his star). Each game has one
   -- card in the chat (voice_messages.game_id) that updates as they play.
   CREATE TABLE IF NOT EXISTS games (

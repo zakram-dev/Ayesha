@@ -125,6 +125,94 @@ function isHer(req) {
   return hasSession(req, 'ayesha_voice', 'voice') && !hasSession(req, 'ayesha_admin', 'admin');
 }
 
+// ---- Her visits (the admin "Her visits" tab). Only her signed-in browser is recorded: it needs the mailbox login, so a
+// stranger never is; nothing is recorded while the admin is logged in, on a device he marked "this is me" (a year-long
+// cookie), or for a login he marked "that's me". Only what happens on this site, kept for 90 days.
+const visitGapMinutes = 20; // coming back within this is the same visit
+const visitKeepDays = 90;
+const visitAreas = new Set(['top', 'notes', 'distraction', 'corner', 'reading', 'mailbox', 'wardrobe', 'plane']);
+// Taps only her page can see (everything else is noted by the server as it happens).
+const herPageKinds = new Set(['mailbox', 'wardrobe', 'outfit', 'bunny', 'flower', 'secret', 'theme', 'popup']);
+
+function excludedLogins() {
+  try {
+    return JSON.parse(readSetting('visits_excluded_logins') || '[]');
+  } catch (error) {
+    return [];
+  }
+}
+
+// A rough name for the device, like "iPhone · Safari", so he can tell his own visits from hers.
+function deviceName(userAgent) {
+  const agent = String(userAgent || '');
+  const device = /iPad/.test(agent) ? 'iPad' : /iPhone/.test(agent) ? 'iPhone' : /Android/.test(agent) ? 'Android'
+    : /Macintosh/.test(agent) ? 'Mac' : /Windows/.test(agent) ? 'Windows' : /Linux/.test(agent) ? 'Linux' : 'device';
+  const browser = /Instagram/.test(agent) ? 'Instagram' : /Snapchat/.test(agent) ? 'Snapchat' : /Edg\//.test(agent) ? 'Edge'
+    : /CriOS|Chrome\//.test(agent) ? 'Chrome' : /FxiOS|Firefox\//.test(agent) ? 'Firefox' : /Safari\//.test(agent) ? 'Safari' : 'browser';
+  return `${device} · ${browser}`;
+}
+
+function herLogin(req) {
+  if (!isHer(req) || readCookie(req, 'ayesha_me')) return null;
+  const login = hashToken(readCookie(req, 'ayesha_voice'));
+  return excludedLogins().includes(login) ? null : login;
+}
+
+// The visit she is on now (seen within the last 20 minutes), or a new one.
+function currentVisit(req, login) {
+  const recent = db.prepare("SELECT id FROM her_visits WHERE login_hash = ? AND last_seen_at >= datetime('now', ?) ORDER BY id DESC LIMIT 1")
+    .get(login, `-${visitGapMinutes} minutes`);
+  if (!recent) return db.prepare('INSERT INTO her_visits (login_hash, device) VALUES (?, ?)').run(login, deviceName(req.get('user-agent'))).lastInsertRowid;
+  db.prepare('UPDATE her_visits SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?').run(recent.id);
+  return recent.id;
+}
+
+function formatSeconds(seconds) {
+  const whole = Math.max(0, Math.round(seconds || 0));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+function shortText(value, length = 120) {
+  if (value === null || value === undefined) return null;
+  const flat = String(value).replace(/\s+/g, ' ').trim();
+  if (!flat) return null;
+  return flat.length > length ? `${flat.slice(0, length).replace(/\s+\S*$/, '')}…` : flat;
+}
+
+// One thing she did. The same thing again within two minutes adds to its count instead of a new row (five taps on
+// the bunny are one row, ×5). Never lets a problem here get in the way of what she was doing.
+function noteHer(req, kind, detail = null, category = null) {
+  try {
+    const login = herLogin(req);
+    if (!login) return;
+    const visitId = currentVisit(req, login);
+    const text = shortText(detail, kind === 'note' || kind === 'popup' || kind === 'like' || kind === 'comment' ? 70 : 120);
+    const last = db.prepare("SELECT id, kind, detail, last_at >= datetime('now', '-2 minutes') AS recent FROM her_activity WHERE visit_id = ? ORDER BY id DESC LIMIT 1").get(visitId);
+    if (last?.recent && last.kind === kind && last.detail === text) {
+      db.prepare('UPDATE her_activity SET count = count + 1, last_at = CURRENT_TIMESTAMP WHERE id = ?').run(last.id);
+    } else {
+      db.prepare('INSERT INTO her_activity (visit_id, kind, detail, category) VALUES (?, ?, ?, ?)').run(visitId, kind, text, shortText(category, 60));
+    }
+  } catch (error) {
+    console.warn('Could not note her visit:', error.message);
+  }
+}
+
+function forgetOldVisits() {
+  db.prepare("DELETE FROM her_visits WHERE last_seen_at < datetime('now', ?)").run(`-${visitKeepDays} days`);
+}
+forgetOldVisits();
+setInterval(forgetOldVisits, 6 * 60 * 60 * 1000).unref();
+
+function readAreas(saved) {
+  try {
+    const areas = JSON.parse(saved || '{}');
+    return areas && typeof areas === 'object' && !Array.isArray(areas) ? areas : {};
+  } catch (error) {
+    return {};
+  }
+}
+
 app.get('/api/categories', (req, res) => {
   const unlocked = canSeePrivate(req);
   const categories = db.prepare(`
@@ -539,6 +627,7 @@ app.get('/api/quotes/random', (req, res) => {
   `).get(category);
 
   if (!fallback) return res.status(404).json({ error: 'No active quotes found for this category.' });
+  noteHer(req, 'note', fallback.text, fallback.category_name);
   res.json({
     id: fallback.id,
     text: fallback.text,
@@ -1079,6 +1168,78 @@ app.get('/api/voice/session', requireVoice, (req, res) => {
   res.json({ unread: unreadVoiceMessages('zohaib'), game: gameNews() });
 });
 
+// Her page reports how long it was really on her screen since the last report (and where), and the taps only the
+// page can see. Anyone else just hears that nothing is being recorded, and their page stops asking.
+app.post('/api/her/visit', (req, res) => {
+  const login = herLogin(req);
+  if (!login) return res.json({ tracking: false });
+  const visitId = currentVisit(req, login);
+  const seconds = Math.max(0, Math.min(Math.floor(Number(req.body?.seconds) || 0), 120));
+  if (seconds) {
+    const areas = readAreas(db.prepare('SELECT areas FROM her_visits WHERE id = ?').get(visitId).areas);
+    const reported = req.body?.areas && typeof req.body.areas === 'object' ? req.body.areas : {};
+    Object.entries(reported).forEach(([area, value]) => {
+      if (visitAreas.has(area)) areas[area] = (areas[area] || 0) + Math.max(0, Math.min(Math.floor(Number(value) || 0), 120));
+    });
+    db.prepare('UPDATE her_visits SET active_seconds = active_seconds + ?, areas = ? WHERE id = ?').run(seconds, JSON.stringify(areas), visitId);
+  }
+  if (herPageKinds.has(req.body?.did)) noteHer(req, req.body.did, typeof req.body.detail === 'string' ? req.body.detail : null);
+  res.json({ tracking: true });
+});
+
+// Newest visit first, each with what she did (newest first); and the last 30 days for "when she comes" and
+// "what she loves".
+app.get('/api/admin/her-visits', requireAdmin, (req, res) => {
+  const visits = db.prepare('SELECT id, device, started_at, last_seen_at, active_seconds, areas FROM her_visits ORDER BY started_at DESC, id DESC LIMIT 80').all();
+  const byVisit = new Map(visits.map(visit => [visit.id, []]));
+  if (visits.length) {
+    db.prepare(`SELECT visit_id, kind, detail, category, count, created_at, last_at FROM her_activity WHERE visit_id IN (${visits.map(() => '?').join(',')}) ORDER BY id DESC`)
+      .all(...visits.map(visit => visit.id))
+      .forEach(row => byVisit.get(row.visit_id).push({ kind: row.kind, detail: row.detail, category: row.category, count: row.count, at: row.created_at, lastAt: row.last_at }));
+  }
+  const lastMonth = "v.started_at >= datetime('now', '-30 days')";
+  res.set('Cache-Control', 'private, no-store');
+  res.json({
+    thisDeviceIsYou: Boolean(readCookie(req, 'ayesha_me')),
+    visits: visits.map(visit => ({
+      id: visit.id, device: visit.device, startedAt: visit.started_at, lastSeenAt: visit.last_seen_at,
+      seconds: visit.active_seconds, areas: readAreas(visit.areas), activities: byVisit.get(visit.id)
+    })),
+    month: {
+      visits: db.prepare(`SELECT started_at AS startedAt, active_seconds AS seconds, areas FROM her_visits v WHERE ${lastMonth}`).all()
+        .map(visit => ({ ...visit, areas: readAreas(visit.areas) })),
+      kinds: db.prepare(`SELECT a.kind, SUM(a.count) AS count FROM her_activity a JOIN her_visits v ON v.id = a.visit_id WHERE ${lastMonth} GROUP BY a.kind ORDER BY count DESC`).all(),
+      categories: db.prepare(`SELECT a.category AS name, SUM(a.count) AS count FROM her_activity a JOIN her_visits v ON v.id = a.visit_id WHERE ${lastMonth} AND a.kind = 'note' AND a.category IS NOT NULL GROUP BY a.category ORDER BY count DESC LIMIT 6`).all(),
+      notes: db.prepare(`SELECT a.detail AS text, a.category, SUM(a.count) AS count FROM her_activity a JOIN her_visits v ON v.id = a.visit_id WHERE ${lastMonth} AND a.kind IN ('note', 'like') AND a.detail IS NOT NULL GROUP BY a.detail ORDER BY count DESC LIMIT 5`).all()
+    }
+  });
+});
+
+// "This device is me": this browser is never recorded, for a year, even after the admin login runs out.
+app.post('/api/admin/her-visits/this-device', requireAdmin, (req, res) => {
+  res.setHeader('Set-Cookie', `ayesha_me=1; HttpOnly; SameSite=Lax; Path=/; Max-Age=${365 * 24 * 60 * 60}`);
+  res.status(204).end();
+});
+
+app.delete('/api/admin/her-visits/this-device', requireAdmin, (req, res) => {
+  res.setHeader('Set-Cookie', 'ayesha_me=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  res.status(204).end();
+});
+
+// "That's me" on a visit: every visit from that login goes, and it is never recorded again.
+app.post('/api/admin/her-visits/:id/not-her', requireAdmin, (req, res) => {
+  const visit = db.prepare('SELECT login_hash FROM her_visits WHERE id = ?').get(Number(req.params.id));
+  if (!visit) return res.status(404).json({ error: 'That visit is already gone.' });
+  saveSetting.run('visits_excluded_logins', JSON.stringify([...new Set([...excludedLogins(), visit.login_hash])].slice(-50)));
+  const removed = db.prepare('DELETE FROM her_visits WHERE login_hash = ?').run(visit.login_hash).changes;
+  res.json({ removed });
+});
+
+app.delete('/api/admin/her-visits', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM her_visits').run();
+  res.status(204).end();
+});
+
 // The bunny's wardrobe (her outfit, saved looks, visit days and unlocks), kept with her mailbox login so it follows her
 // between phones. Only short item ids, dates and yes/no flags are stored.
 const wardrobeSlotNames = ['head', 'ear', 'face', 'neck', 'hold', 'fur'];
@@ -1130,6 +1291,7 @@ app.post('/api/voice/messages', requireVoice, limitAyeshaSending, (req, res) => 
     return res.status(400).json({ error: error.message });
   }
   ayeshaSendTimes.push(Date.now());
+  noteHer(req, kind === 'text' ? 'message' : kind, kind === 'sticker' ? bunnyStickers[req.body.sticker] : null);
   if (kind === 'plane') {
     buzzOrHold(req, 'plane', 'A paper airplane from Ayesha just landed ✈︎', 'airplane');
     return res.status(201).json({ ok: true });
@@ -1145,7 +1307,10 @@ app.get('/api/voice/planes', requireVoice, (req, res) => {
 });
 
 app.post('/api/voice/messages/:id/unfold', requireVoice, (req, res) => {
-  if (markUnfolded(Number(req.params.id), 'ayesha')) sendPhoneAlert(req, 'Ayesha unfolded your paper airplane ♡', 'airplane');
+  if (markUnfolded(Number(req.params.id), 'ayesha')) {
+    sendPhoneAlert(req, 'Ayesha unfolded your paper airplane ♡', 'airplane');
+    noteHer(req, 'unfold');
+  }
   res.status(204).end();
 });
 
@@ -1164,6 +1329,7 @@ app.post('/api/voice/games', requireVoice, (req, res) => {
     return sendGameError(res, error);
   }
   buzzOrHold(req, 'game', `Ayesha wants to play tic-tac-toe ♡${game.stake ? ' (with stakes 👀)' : ''}`, 'video_game');
+  noteHer(req, 'game-start', game.stake ? `stakes: ${game.stake}` : null);
   res.status(201).json({ id: game.gameId });
 });
 
@@ -1174,6 +1340,7 @@ app.post('/api/voice/games/:id/move', requireVoice, (req, res) => {
   } catch (error) {
     return sendGameError(res, error);
   }
+  noteHer(req, result.status === 'won' ? 'game-won' : result.status === 'tie' ? 'game-tie' : 'game-move');
   if (result.status === 'won') buzzOrHold(req, 'game', 'Ayesha won tic-tac-toe 👑', 'crown');
   else if (result.status === 'tie') buzzOrHold(req, 'game', 'Tic-tac-toe with Ayesha: a tie, so you both win a hug 🤗', 'hugs');
   else buzzOrHold(req, 'game', 'Ayesha played ♡ your turn ✦', 'video_game');
@@ -1183,6 +1350,7 @@ app.post('/api/voice/games/:id/move', requireVoice, (req, res) => {
 app.post('/api/voice/games/:id/claim', requireVoice, (req, res) => {
   if (!claimStake('ayesha', Number(req.params.id))) return res.status(409).json({ error: 'There is nothing to claim on this game.' });
   sendPhoneAlert(req, 'Ayesha claimed her prize 🏆', 'trophy');
+  noteHer(req, 'game-claim');
   res.status(204).end();
 });
 
@@ -1196,6 +1364,7 @@ app.put('/api/voice/messages/:id/reaction', requireVoice, (req, res) => {
   }
   const result = setReaction(id, 'ayesha', reaction);
   if (!result) return res.status(404).json({ error: 'That message could not be found.' });
+  if (reaction) noteHer(req, 'react', reaction);
   // One buzz per message per hour, however many times she changes her mind.
   if (result.changed && Date.now() - (reactionAlertTimes.get(id) || 0) > 60 * 60 * 1000) {
     reactionAlertTimes.set(id, Date.now());
@@ -1205,7 +1374,7 @@ app.put('/api/voice/messages/:id/reaction', requireVoice, (req, res) => {
 });
 
 app.post('/api/voice/messages/:id/played', requireVoice, (req, res) => {
-  markPlayed(Number(req.params.id), 'ayesha');
+  if (markPlayed(Number(req.params.id), 'ayesha')) noteHer(req, 'listen');
   res.status(204).end();
 });
 
@@ -1244,6 +1413,7 @@ app.post('/api/notes/:id/comments', requireVoice, limitAyeshaSending, (req, res)
   }
   const saved = db.prepare("INSERT INTO voice_messages (sender, kind, body, quote_id) VALUES ('ayesha', 'text', ?, ?)").run(text, note.id);
   ayeshaSendTimes.push(Date.now());
+  noteHer(req, 'comment', db.prepare('SELECT text FROM quotes WHERE id = ?').get(note.id).text);
   sendPhoneAlert(req, 'Ayesha wrote back on one of your notes 💬', 'speech_balloon');
   const createdAt = db.prepare('SELECT created_at FROM voice_messages WHERE id = ?').get(saved.lastInsertRowid).created_at;
   res.status(201).json({ ok: true, comment: { text, createdAt } });
@@ -1358,6 +1528,7 @@ app.post('/api/status/invite', requireVoice, (req, res) => {
   inviteTimes.push(now);
   lastInviteByKind.set(kind, now);
   db.prepare("INSERT INTO voice_messages (sender, kind, body) VALUES ('ayesha', 'text', ?)").run(statusInvites[kind].text);
+  noteHer(req, 'invite', statusInvites[kind].text);
   if (readStatus()?.key === 'driving') {
     saveSetting.run('held_invites', JSON.stringify([...heldInvites(), { kind, host: req.get('host') || 'localhost' }]));
     return res.status(201).json({ ok: true, held: true });
@@ -1387,6 +1558,7 @@ app.put('/api/notes/:id/like', requireVoice, (req, res) => {
   if (!note) return res.status(404).json({ error: 'That note could not be found.' });
   const liked = parseBoolean(req.body?.liked);
   db.prepare(`UPDATE quotes SET liked_at = ${liked ? 'COALESCE(liked_at, CURRENT_TIMESTAMP)' : 'NULL'} WHERE id = ?`).run(note.id);
+  noteHer(req, liked ? 'like' : 'unlike', db.prepare('SELECT text FROM quotes WHERE id = ?').get(note.id).text);
   // One buzz per note per hour, however many times the heart is tapped.
   const lastAlert = likeAlertTimes.get(note.id) || 0;
   if (liked && !note.liked_at && Date.now() - lastAlert > 60 * 60 * 1000) {
@@ -1403,6 +1575,7 @@ app.post('/api/voice/messages/audio', requireVoice, limitAyeshaSending, audioUpl
     return res.status(400).json({ error: error.message });
   }
   ayeshaSendTimes.push(Date.now());
+  noteHer(req, 'voice', formatSeconds(Number(req.get('X-Duration-Ms')) / 1000));
   sendPhoneAlert(req, 'Ayesha sent you a voice note ✦', 'microphone');
   res.status(201).json({ ok: true });
 });

@@ -114,7 +114,12 @@ function activateTab(tabName) {
   document.querySelectorAll('.admin-tab').forEach(button => button.classList.toggle('active', button.dataset.tab === tabName));
   document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === tabName));
   window.clearInterval(voicePollTimer);
+  window.clearInterval(visitsPollTimer);
   if (tabName === 'status') loadMyStatus();
+  if (tabName === 'visits') {
+    loadVisits();
+    visitsPollTimer = window.setInterval(loadVisits, 30000);
+  }
   if (tabName === 'voice') {
     loadVoiceThread();
     loadAlerts();
@@ -303,7 +308,229 @@ async function enterAdmin() {
   // Phone alerts link straight to /admin/#voice.
   if (window.location.hash === '#voice') activateTab('voice');
   if (window.location.hash === '#status') activateTab('status');
+  if (window.location.hash === '#visits') activateTab('visits');
 }
+
+// ---- Her visits: when she comes, how long she stays, and what she does, so new notes and features can follow what
+// she loves. The table refreshes every 30 seconds while this tab is open; newest visit (and newest thing) on top.
+let visitsPollTimer = null;
+const visitAreaNames = {
+  reading: 'reading notes', mailbox: 'the mailbox', top: 'the top (bunny & flower)', notes: 'the note cards',
+  distraction: 'distract me', corner: 'the mailbox corner', wardrobe: 'the wardrobe', plane: 'paper airplanes'
+};
+const visitKinds = {
+  note: 'opened a note', popup: 'saw the note of the day', like: '♡ hearted a note', unlike: 'took back a ♡', comment: 'wrote on a note',
+  mailbox: 'opened the mailbox', message: 'sent you a message', voice: 'sent you a voice note', sticker: 'sent a sticker',
+  plane: 'threw a paper airplane ✈︎', unfold: 'unfolded your paper airplane', react: 'reacted to a message', listen: 'listened to your voice note',
+  invite: 'tapped a status button', 'game-start': 'started tic-tac-toe', 'game-move': 'played tic-tac-toe', 'game-won': 'won tic-tac-toe 👑',
+  'game-tie': 'tied at tic-tac-toe', 'game-claim': 'claimed her prize 🏆', wardrobe: 'opened the wardrobe', outfit: 'dressed the bunny',
+  bunny: 'tapped the bunny', flower: 'tapped the flower', secret: 'found the flower’s secret ✿', theme: 'switched the theme'
+};
+
+// Saved times are UTC ("YYYY-MM-DD HH:MM:SS"); shown in this browser's time, like "Today 9:42 PM".
+function visitTime(savedAt) {
+  return new Date(`${savedAt.replace(' ', 'T')}Z`);
+}
+
+function visitDay(date) {
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+const clockTime = date => date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+function stayed(seconds) {
+  if (seconds < 60) return seconds ? `${seconds} s` : 'a moment';
+  const minutes = Math.round(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+function hourName(hour) {
+  return new Date(2000, 0, 1, hour).toLocaleTimeString([], { hour: 'numeric' }).toLowerCase();
+}
+
+function topArea(areas) {
+  const [area] = Object.entries(areas || {}).sort((a, b) => b[1] - a[1])[0] || [];
+  return area ? visitAreaNames[area] || area : '';
+}
+
+function activityDetail(activity) {
+  if (activity.kind === 'theme') return activity.detail === 'night' ? 'to night mode ☾' : 'to day mode ☀︎';
+  const quote = ['note', 'popup', 'like', 'unlike', 'comment'].includes(activity.kind) && activity.detail ? `“${activity.detail}”` : activity.detail || '';
+  return [quote, activity.category].filter(Boolean).join(' · ');
+}
+
+// One tooltip for both charts: the value first, then what it is.
+const visitTip = document.querySelector('#visit-tip');
+function showVisitTip(target, value, label) {
+  visitTip.replaceChildren(Object.assign(document.createElement('strong'), { textContent: value }), document.createTextNode(` ${label}`));
+  visitTip.hidden = false;
+  const box = target.getBoundingClientRect();
+  visitTip.style.left = `${Math.max(8, Math.min(box.left + box.width / 2 - visitTip.offsetWidth / 2, window.innerWidth - visitTip.offsetWidth - 8))}px`;
+  visitTip.style.top = `${Math.max(8, box.top - visitTip.offsetHeight - 6)}px`;
+}
+function hideVisitTip() {
+  visitTip.hidden = true;
+}
+
+// Her visits by the hour they started (in this browser's time), last 30 days: one column per hour.
+function renderHourChart(visits) {
+  const hours = Array.from({ length: 24 }, () => ({ visits: 0, seconds: 0 }));
+  visits.forEach(visit => {
+    const hour = visitTime(visit.startedAt).getHours();
+    hours[hour].visits += 1;
+    hours[hour].seconds += visit.seconds;
+  });
+  const most = Math.max(1, ...hours.map(hour => hour.visits));
+  const chart = document.querySelector('#hour-chart');
+  chart.replaceChildren(...hours.map((hour, index) => {
+    const column = document.createElement('button');
+    column.type = 'button';
+    column.className = 'hour-column';
+    const label = `${hourName(index)}–${hourName((index + 1) % 24)}`;
+    const value = `${hour.visits} visit${hour.visits === 1 ? '' : 's'}`;
+    column.setAttribute('aria-label', `${label}: ${value}, ${stayed(hour.seconds)}`);
+    const bar = document.createElement('span');
+    bar.style.height = `${(hour.visits / most) * 100}%`;
+    column.append(bar);
+    const show = () => showVisitTip(column, value, `${label} · ${stayed(hour.seconds)} in all`);
+    column.addEventListener('pointerenter', show);
+    column.addEventListener('focus', show);
+    column.addEventListener('pointerleave', hideVisitTip);
+    column.addEventListener('blur', hideVisitTip);
+    return column;
+  }));
+  document.querySelector('#hour-table').innerHTML = hours.map((hour, index) => hour.visits
+    ? `<tr><td>${escapeHtml(`${hourName(index)}–${hourName((index + 1) % 24)}`)}</td><td>${hour.visits}</td><td>${Math.round(hour.seconds / 60)}</td></tr>`
+    : '').join('') || '<tr><td colspan="3">No visits yet.</td></tr>';
+  // The two hours in a row she comes most: the best time to have a new note waiting.
+  let best = null;
+  hours.forEach((hour, index) => {
+    const pair = hour.visits + hours[(index + 1) % 24].visits;
+    if (pair && (!best || pair > best.visits)) best = { index, visits: pair };
+  });
+  document.querySelector('#visit-best').textContent = best
+    ? `usually around ${hourName(best.index)}–${hourName((best.index + 2) % 24)} · last 30 days`
+    : 'last 30 days, by hour';
+}
+
+// Ranked bars, largest first, one color: each row its name, the bar, and its value at the tip.
+function renderRankBars(container, rows, { format, emptyText }) {
+  const most = Math.max(1, ...rows.map(row => row.value));
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  if (!rows.length) {
+    container.replaceChildren(Object.assign(document.createElement('p'), { className: 'setting-hint', textContent: emptyText }));
+    return;
+  }
+  container.replaceChildren(...rows.map(row => {
+    const item = document.createElement('div');
+    item.className = 'rank-bar';
+    item.tabIndex = 0;
+    const name = Object.assign(document.createElement('span'), { className: 'rank-name', textContent: row.name });
+    const track = Object.assign(document.createElement('span'), { className: 'rank-track' });
+    const bar = document.createElement('i');
+    bar.style.setProperty('--share', String(Math.max(0.02, row.value / most)));
+    track.append(bar, Object.assign(document.createElement('b'), { textContent: format(row.value) }));
+    item.append(name, track);
+    const share = `${Math.round((row.value / total) * 100)}%`;
+    item.setAttribute('aria-label', `${row.name}: ${format(row.value)}, ${share}`);
+    const show = () => showVisitTip(bar, format(row.value), `${row.name} · ${share}`);
+    item.addEventListener('pointerenter', show);
+    item.addEventListener('focus', show);
+    item.addEventListener('pointerleave', hideVisitTip);
+    item.addEventListener('blur', hideVisitTip);
+    return item;
+  }));
+}
+
+function renderVisitSummary(data) {
+  const { visits: month } = data.month;
+  const seconds = month.reduce((sum, visit) => sum + visit.seconds, 0);
+  const latest = [...data.visits].sort((a, b) => visitTime(b.lastSeenAt) - visitTime(a.lastSeenAt))[0];
+  const hereNow = latest && Date.now() - visitTime(latest.lastSeenAt).getTime() < 90 * 1000;
+  const tiles = [
+    ['Visits, last 30 days', String(month.length)],
+    ['Time on the site', stayed(seconds)],
+    ['A visit, on average', month.length ? stayed(Math.round(seconds / month.length)) : '—'],
+    ['Last here', latest ? (hereNow ? 'here now' : `${visitDay(visitTime(latest.lastSeenAt))} ${clockTime(visitTime(latest.lastSeenAt))}`) : '—']
+  ];
+  document.querySelector('#visit-stats').innerHTML = tiles.map(([label, value]) => `<div class="visit-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+  renderHourChart(month);
+  const areas = {};
+  month.forEach(visit => Object.entries(visit.areas).forEach(([area, value]) => { areas[area] = (areas[area] || 0) + value; }));
+  renderRankBars(document.querySelector('#area-bars'), Object.entries(areas).sort((a, b) => b[1] - a[1]).map(([area, value]) => ({ name: visitAreaNames[area] || area, value })),
+    { format: stayed, emptyText: 'Her time shows here once she visits.' });
+  renderRankBars(document.querySelector('#category-bars'), data.month.categories.map(row => ({ name: row.name, value: row.count })),
+    { format: count => `${count} note${count === 1 ? '' : 's'}`, emptyText: 'No notes opened yet.' });
+  document.querySelector('#visit-kinds').innerHTML = data.month.kinds.slice(0, 8)
+    .map(row => `<li>${escapeHtml(visitKinds[row.kind] || row.kind)} <strong>${row.count}</strong></li>`).join('') || '<li>Nothing yet.</li>';
+  document.querySelector('#visit-notes').innerHTML = data.month.notes
+    .map(row => `<li><span>“${escapeHtml(row.text)}”${row.category ? `<small>${escapeHtml(row.category)}</small>` : ''}</span><strong>${row.count}</strong></li>`).join('') || '<li>Nothing yet.</li>';
+}
+
+function renderVisitMe(isYou) {
+  document.querySelector('#visit-me').innerHTML = isYou
+    ? '<p><strong>✓ This device is marked as you,</strong> so nothing you do on the site here is recorded. <button class="small-button secondary" type="button" data-visit-me="off">undo</button></p>'
+    : '<p><button class="small-button" type="button" data-visit-me="on">This device is me</button> Tap this once on each phone or laptop you use to check the site, so your own visits are never recorded (it lasts a year, even after you log out).</p>';
+}
+
+function renderVisitRows(visits) {
+  document.querySelector('#visit-rows').innerHTML = visits.length ? visits.map(visit => {
+    const started = visitTime(visit.startedAt);
+    const hereNow = Date.now() - visitTime(visit.lastSeenAt).getTime() < 90 * 1000;
+    const mostly = topArea(visit.areas);
+    const head = `<tr class="visit-head"><td colspan="3"><div class="visit-head-row"><span><strong>${escapeHtml(`${visitDay(started)} ${clockTime(started)}`)}</strong>`
+      + ` · ${hereNow ? '<b class="here-now">here now</b> · ' : ''}stayed ${escapeHtml(stayed(visit.seconds))} · ${escapeHtml(visit.device || 'a device')}`
+      + `${mostly ? ` · mostly ${escapeHtml(mostly)}` : ''}</span>`
+      + `<button class="small-button secondary" type="button" data-not-her="${visit.id}" title="Remove every visit from this login and never record it again">that’s me</button></div></td></tr>`;
+    const rows = visit.activities.length
+      ? visit.activities.map(activity => `<tr><td class="visit-clock">${escapeHtml(clockTime(visitTime(activity.lastAt)))}</td>`
+        + `<td>${escapeHtml(visitKinds[activity.kind] || activity.kind)}${activity.count > 1 ? ` <b class="visit-count">×${activity.count}</b>` : ''}</td>`
+        + `<td class="visit-detail">${escapeHtml(activityDetail(activity))}</td></tr>`).join('')
+      : '<tr><td></td><td class="visit-detail" colspan="2">looked around</td></tr>';
+    return head + rows;
+  }).join('') : '<tr><td colspan="3" class="visit-detail">No visits yet. They show here once she opens the site on her phone (signed in to the mailbox).</td></tr>';
+}
+
+async function loadVisits() {
+  try {
+    const data = await request('/api/admin/her-visits');
+    renderVisitMe(data.thisDeviceIsYou);
+    renderVisitSummary(data);
+    renderVisitRows(data.visits);
+    document.querySelector('#visits-updated').textContent = `updated ${clockTime(new Date())}`;
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+}
+
+document.querySelector('#visit-me').addEventListener('click', async event => {
+  const button = event.target.closest('[data-visit-me]');
+  if (!button) return;
+  await request('/api/admin/her-visits/this-device', { method: button.dataset.visitMe === 'on' ? 'POST' : 'DELETE' }).catch(error => showStatus(error.message, true));
+  loadVisits();
+});
+
+document.querySelector('#visit-rows').addEventListener('click', async event => {
+  const button = event.target.closest('[data-not-her]');
+  if (!button || !confirm('Is this visit you? Every visit from this login will be removed, and it won’t be recorded again.')) return;
+  try {
+    const { removed } = await request(`/api/admin/her-visits/${button.dataset.notHer}/not-her`, { method: 'POST' });
+    showStatus(`Removed ${removed} visit${removed === 1 ? '' : 's'} from that login.`);
+  } catch (error) {
+    showStatus(error.message, true);
+  }
+  loadVisits();
+});
+
+document.querySelector('#visits-clear').addEventListener('click', async () => {
+  if (!confirm('Clear every recorded visit? This can’t be undone.')) return;
+  await request('/api/admin/her-visits', { method: 'DELETE' }).catch(error => showStatus(error.message, true));
+  loadVisits();
+});
 
 document.querySelector('#login-form').addEventListener('submit', async event => {
   event.preventDefault();

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ayesha quote admin</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/admin/admin.css?v=chat-extras" />
+    <link rel="stylesheet" href="/admin/admin.css?v=her-visits" />
     <link rel="stylesheet" href="/chat.css?v=fast-moves" />
   </head>
   <body>
@@ -35,6 +35,7 @@
           <button class="admin-tab" type="button" data-tab="quotes">Quotes</button>
           <button class="admin-tab" type="button" data-tab="voice">Mailbox <b class="tab-badge" id="voice-tab-badge" hidden></b></button>
           <button class="admin-tab" type="button" data-tab="status">My status</button>
+          <button class="admin-tab" type="button" data-tab="visits">Her visits</button>
           <button class="admin-tab" type="button" data-tab="settings">Settings</button>
         </nav>
 
@@ -94,6 +95,37 @@
               <li><strong>Your manual button (optional).</strong> New shortcut <code>My status</code>: <b>Choose from List</b> with <code>free</code>, <code>free-school</code>, <code>chat</code>, <code>busy</code>, <code>clear</code> → <b>Run Shortcut</b> <code>Ayesha status</code>. Add it to your Home Screen for one-tap changes (like "free at school" between classes).</li>
             </ol>
             <p class="setting-hint">Words it understands: <code>home</code>, <code>school</code>, <code>free-school</code>, <code>work</code>, <code>free</code>, <code>chat</code>, <code>busy</code>, <code>driving</code>, <code>leave-home</code>, <code>leave-school</code>, <code>leave-work</code>, <code>leave-driving</code>, <code>clear</code>. Your phone works out where you are; the site only ever receives the word.</p>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-panel="visits">
+          <section class="panel">
+            <div class="section-header"><h2>Her visits</h2><button class="small-button secondary" id="visits-clear" type="button">Clear all visits</button></div>
+            <p class="setting-hint">Only her phone (signed in to the mailbox) is recorded: never a stranger, never while you are logged in here, and never on a device you mark below. It records what she opens and does on this site and how long the page is really on her screen, nothing else. Visits older than 90 days delete themselves.</p>
+            <div class="visit-me" id="visit-me"></div>
+            <div class="visit-stats" id="visit-stats"></div>
+            <div class="visit-charts">
+              <figure class="visit-chart">
+                <figcaption><strong>When she visits</strong><span id="visit-best">last 30 days, by hour</span></figcaption>
+                <div class="hour-chart" id="hour-chart" role="group" aria-label="Her visits by hour of the day, last 30 days"></div>
+                <div class="hour-axis" aria-hidden="true"><span>12 am</span><span>6 am</span><span>12 pm</span><span>6 pm</span><span>12 am</span></div>
+                <details class="visit-table-view"><summary>see the hours as a table</summary><table><thead><tr><th>Hour</th><th>Visits</th><th>Minutes</th></tr></thead><tbody id="hour-table"></tbody></table></details>
+                <div class="chart-tip" id="visit-tip" role="status" hidden></div>
+              </figure>
+              <figure class="visit-chart">
+                <figcaption><strong>Where her time goes</strong><span>last 30 days</span></figcaption>
+                <div class="rank-bars" id="area-bars"></div>
+              </figure>
+            </div>
+            <div class="visit-lists">
+              <div><h3>Notes she opens, by category</h3><div class="rank-bars" id="category-bars"></div></div>
+              <div><h3>What she does most</h3><ol class="visit-kinds" id="visit-kinds"></ol></div>
+              <div><h3>Notes she opened or ♡ most</h3><ol class="visit-notes" id="visit-notes"></ol></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="section-header"><h2>Every visit, newest first</h2><small class="setting-hint" id="visits-updated"></small></div>
+            <div class="table-wrap"><table class="visit-table"><thead><tr><th>When</th><th>What she did</th><th>Details</th></tr></thead><tbody id="visit-rows"></tbody></table></div>
           </section>
         </div>
 
@@ -250,6 +282,6 @@
     </div>
     <script src="/bunny-stickers.js?v=chat-extras"></script>
     <script src="/voice-kit.js?v=fast-moves"></script>
-    <script src="/admin/admin.js?v=fast-moves"></script>
+    <script src="/admin/admin.js?v=her-visits"></script>
   </body>
 </html>
